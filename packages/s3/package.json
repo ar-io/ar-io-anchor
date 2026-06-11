@@ -1,6 +1,6 @@
 {
   "name": "@ar.io/anchor-s3",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Anchor-as-you-store for S3: wrap your S3 client so every putObject also anchors a tamper-evident provenance record on Arweave and stores it beside the object.",
   "license": "MIT",
   "type": "module",
@@ -22,7 +22,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@ar.io/anchor": "^0.0.1"
+    "@ar.io/anchor": "^0.1.0"
   },
   "peerDependencies": {
     "@aws-sdk/client-s3": "^3.0.0"

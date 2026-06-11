@@ -45,5 +45,10 @@
     "jcs",
     "rfc8785",
     "ed25519"
-  ]
+  ],
+  "devDependencies": {
+    "@dha-team/arbundles": "^1.0.4",
+    "axios": "^1.17.0",
+    "bs58": "^6.0.0"
+  }
 }

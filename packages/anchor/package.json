@@ -1,0 +1,49 @@
+{
+  "name": "@ar.io/anchor",
+  "version": "0.0.1",
+  "description": "TypeScript write path of the ar.io verification stack: build signed ario.events/v1 envelopes, assemble ANS-104 data items, upload via Turbo, Merkle-batch high-frequency events with per-event inclusion proofs. Verify side: @ar.io/proof.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "src",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@ar.io/proof": "^0.1.0",
+    "@noble/ed25519": "^2.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ar-io/ar-io-anchor.git",
+    "directory": "packages/anchor"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "ar.io",
+    "arweave",
+    "anchoring",
+    "provenance",
+    "audit-trail",
+    "ans-104",
+    "turbo",
+    "merkle",
+    "jcs",
+    "rfc8785",
+    "ed25519"
+  ]
+}

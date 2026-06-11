@@ -1,7 +1,7 @@
 {
   "name": "@ar.io/anchor",
-  "version": "0.1.0",
-  "description": "TypeScript write path of the ar.io verification stack: build signed ario.events/v1 envelopes, assemble ANS-104 data items, upload via Turbo, Merkle-batch high-frequency events with per-event inclusion proofs. Verify side: @ar.io/proof.",
+  "version": "0.1.1",
+  "description": "Anchor-at-write-time for the ar.io verification stack. Hash your data locally, sign a Verifiable Event Envelope (ario.events/v1), and anchor it to ar.io \u2014 permanent, tamper-evident provenance with Merkle-batched checkpoints and per-event inclusion proofs. Raw bytes never leave your system. Verify with @ar.io/proof.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,

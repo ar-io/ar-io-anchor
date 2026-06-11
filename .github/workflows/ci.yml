@@ -20,8 +20,10 @@ jobs:
       - name: Install python validator deps
         run: python3 -m pip install --user cryptography
       - run: npm ci
-      - run: npm run typecheck
+      # Build first: @ar.io/anchor-s3 resolves @ar.io/anchor's types from its
+      # built dist/, so typecheck depends on build output.
       - run: npm run build
+      - run: npm run typecheck
       - run: npm test
       - name: Assert python validator ran (no silent skip)
         run: |

@@ -1,30 +1,64 @@
 # ar-io-anchor
 
-> **Status: Wave 3 T-SDK lane, in active development.** Working repo name — package is `@ar.io/anchor`. PRD: [ar-io-agent#11](https://github.com/ar-io/ar-io-agent/issues/11). Binding family contract: [`envelope-spec.md` v1.1](https://github.com/ar-io/ar-io-proof/blob/main/specs/envelope-spec.md). No npm publish without coordinator green light.
+> **Status: Wave 3 T-SDK lane.** Phases 1–4 complete (profile + envelope assembly, anchor single-shot, Merkle batcher, S3 adapter). Working repo name — packages are `@ar.io/anchor` and `@ar.io/anchor-s3`. PRD: [ar-io-agent#11](https://github.com/ar-io/ar-io-agent/issues/11). Family contract: [`envelope-spec.md`](https://github.com/ar-io/ar-io-proof/blob/main/specs/envelope-spec.md) (profile `ario.events/v1`, registered v1.2). No npm publish without coordinator green light.
 
-The **TypeScript write path** of the ar.io verification stack: take bytes (or a pre-computed hash) plus minimal metadata → signed event envelope under the `ario.events/v1` profile → ANS-104 data item → Turbo upload → receipt. Raw data is hashed locally and **never uploaded**.
+The **TypeScript write path** of the ar.io verification stack: take bytes (or a pre-computed hash) plus minimal metadata → signed event envelope under `ario.events/v1` → ANS-104 data item → Turbo upload → receipt. Raw data is hashed locally and **never uploaded**. The verify side is the separate read-only [`@ar.io/proof`](https://www.npmjs.com/package/@ar.io/proof).
 
-The verify side is the separate, read-only [`@ar.io/proof`](https://www.npmjs.com/package/@ar.io/proof) — this SDK consumes its primitives and never re-implements verification.
+## Quickstart
+
+```ts
+import { createAnchorer } from "@ar.io/anchor";
+
+const ario = createAnchorer(); // dev mode: zero config, free tier
+const receipt = await ario.anchor({ data: fileBytes, ref: "s3://bucket/key" });
+receipt.txId; // permanent Arweave anchor — resolved when Turbo accepted
+```
+
+High-frequency events? The **Merkle batcher** turns N events into one Arweave write per window — every event keeps its own offline-verifiable inclusion proof:
+
+```ts
+const batch = ario.batch({ maxEvents: 100, maxAge: 60_000, flushOnIdle: 5_000 });
+const receipt = await batch.add({ data: JSON.stringify(llmStep) }).receipt();
+// → { checkpointTxId, root, leafHash, leafIndex, auditPath, envelope, ... }
+await ario.close(); // explicit flush — serverless/script safe
+```
+
+Anchor-as-you-store for S3 (the hello-world adapter, ~50 lines):
+
+```ts
+import { anchoredS3 } from "@ar.io/anchor-s3";
+const s3 = anchoredS3(new S3Client({}), ario);
+await s3.putObject({ Bucket, Key, Body }); // object + on-chain anchor + sidecar record
+```
+
+Production structurally refuses auto-generated secrets — `createAnchorer({ environment: "production", signer, wallet, subject })` throws without explicit credentials, and `environment` is stamped *inside the signed bytes*.
 
 ## Packages
 
 | Package | What |
 |---|---|
-| [`packages/anchor`](packages/anchor) (`@ar.io/anchor`) | Envelope assembly, Signer interface, ANS-104 builder, Turbo uploader, Merkle batcher, the structural dev/prod gate. |
+| [`packages/anchor`](packages/anchor) (`@ar.io/anchor`) | Envelope assembly, Signer interface, hand-rolled ANS-104 builder (ed25519 sigType 2), fetch-based Turbo uploader, Merkle batcher, dev/prod gate. Runtime deps: `@ar.io/proof` + `@noble/{ed25519,hashes}` — nothing else. |
+| [`packages/s3`](packages/s3) (`@ar.io/anchor-s3`) | The S3 wrapper adapter. Dependencies point adapter → core, never back. |
 
-Workspace-ready: `@ar.io/envelope` may split out later; until then the envelope kernel primitives come from `@ar.io/proof`.
+## Conformance & proof
 
-## Conformance
-
-- Profile: `ario.events/v1` ([`docs/profile-ario.events-v1.md`](docs/profile-ario.events-v1.md)) — Minimal disclosure, `environment` required in the signed scope.
-- Corpus pin: `test-vectors-v1.0` (authoritative home [`ar-io-proof/test-vectors/`](https://github.com/ar-io/ar-io-proof/tree/main/test-vectors)); `ario.events/v1` vectors land via the corpus `v1.1` minor tag.
-- ANS-104 output is byte-pinned against arbundles and independently parsed by [`ar-io-agent/tools/ans104-conformance`](https://github.com/ar-io/ar-io-agent/tree/main/tools/ans104-conformance).
+- Profile: [`docs/profile-ario.events-v1.md`](docs/profile-ario.events-v1.md) — Minimal disclosure, external commitment, `environment` required.
+- Corpus: byte-for-byte against `test-vectors-v1.1` (vendored, [re-pin discipline](packages/anchor/test-vectors/VENDORING.md)).
+- ANS-104: byte-pinned vs arbundles (dev-only dep) + re-verified by the agent's independent Python parser in CI.
+- Live: single-shot [`nFwoc…WuK`](https://viewblock.io/arweave/tx/nFwocIhOfbM3VxjKuyhnEPdP4ssAIYlFOCslcbFsWuk), batched checkpoint (3 leaves, one write) [`Jvnc…DpM`](https://viewblock.io/arweave/tx/JvncbVlUaf0ggmkAbS1coi6eeI2n1oxseoexYdaYDpM) — both gateway-fetched and cross-verified by the Python kernel.
 
 ## Development
 
 ```bash
 npm install
-npm test          # vitest — all packages
-npm run build     # tsc build of @ar.io/anchor
+npm test          # vitest — all packages (84+ tests)
+npm run build     # tsc build of all workspaces
 npm run typecheck
+ANCHOR_LIVE_SMOKE=1 npx vitest run packages/anchor/test/live-smoke.test.ts  # real Turbo, never in CI
 ```
+
+## Follow-on lanes (breadcrumbs, not built here)
+
+- **LangChain.js / Vercel AI SDK adapter** — callback-shaped, exercises the batcher on the hot path. Test seam: spy anchorer (see `packages/s3/test`).
+- **api-guard `producer:enroll`** — production-mode public-key registration; `createAnchorer({ apiGuard })` already accepts the config shape and the SDK stubs against it.
+- **Python anchor sibling** (`ar-io-proof` v0.2+) — same architecture, same corpus.

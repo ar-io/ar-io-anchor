@@ -1,7 +1,7 @@
 {
   "name": "ar-io-anchor",
   "version": "0.0.0",
-  "description": "TypeScript anchoring SDK for the ar.io verification stack — anchor-at-write-time: signed event envelopes (ario.events/v1) to Arweave via Turbo, with Merkle-batched checkpoints and per-event inclusion proofs.",
+  "description": "TypeScript anchoring SDK for the ar.io verification stack \u2014 anchor-at-write-time: signed event envelopes (ario.events/v1) to Arweave via Turbo, with Merkle-batched checkpoints and per-event inclusion proofs.",
   "license": "MIT",
   "type": "module",
   "private": true,
@@ -9,10 +9,10 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @ar.io/anchor",
+    "build": "npm run build --workspaces --if-present",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p packages/anchor"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^20.19.41",

@@ -8,6 +8,7 @@
 import { bytesToHex } from "@ar.io/proof";
 import { sha256 } from "@noble/hashes/sha2";
 
+import { Batcher, type Batch, type BatchOptions, type BatcherContext } from "./batch";
 import { buildSignedDataItem, SolanaWalletSigner, txIdFromDataItem } from "./dataitem";
 import type { DataItemSigner } from "./dataitem";
 import { buildEnvelope } from "./envelope";
@@ -48,6 +49,8 @@ export interface AnchorerOptions {
   scopeNamespace?: string;
   publishContentHashTag?: boolean;
   warn?: (message: string) => void;
+  // Test seam (seam 7, fake clock for the batcher). Defaults to real timers.
+  timers?: BatcherContext["timers"];
 }
 
 export interface AnchorInput {
@@ -77,6 +80,7 @@ export interface AnchorReceipt {
 export interface Anchorer {
   readonly environment: Environment;
   anchor(input: AnchorInput): Promise<AnchorReceipt>;
+  batch(options: BatchOptions): Batch;
   publicKey(): Promise<string>;
   close(): Promise<void>;
 }
@@ -141,21 +145,10 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
       ...(input.eventId !== undefined ? { eventId: input.eventId } : {}),
     });
 
-    const tags = await buildTags({
-      environment,
-      ...(options.scopeNamespace !== undefined
-        ? { scopeNamespace: options.scopeNamespace }
-        : {}),
-      ...(options.publishContentHashTag ? { contentHash } : {}),
-    });
-
-    const dataItem = await buildSignedDataItem(wallet, built.envelopeBytes, tags);
-    const predictedTxId = await txIdFromDataItem(dataItem);
-
-    const receipt = await uploader.upload(dataItem);
-    if (receipt.txId !== predictedTxId) {
-      throw new TxIdMismatchError(predictedTxId, receipt.txId);
-    }
+    const { txId } = await anchorEnvelopeBytes(
+      built.envelopeBytes,
+      options.publishContentHashTag ? contentHash : undefined,
+    );
 
     // Head advances only after Turbo accepted — a failed upload never
     // burns a chain link.
@@ -164,7 +157,7 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
     }
 
     return {
-      txId: receipt.txId,
+      txId,
       eventId: built.envelope.event_id,
       contentHash,
       payloadHash: built.payloadHash,
@@ -172,18 +165,58 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
       envelopeBytes: built.envelopeBytes,
       recordBytes: built.recordBytes,
       environment,
-      explorerUrl: `https://viewblock.io/arweave/tx/${receipt.txId}`,
+      explorerUrl: `https://viewblock.io/arweave/tx/${txId}`,
     };
+  }
+
+  // One upload path for everything: checkpoint envelopes ride the same
+  // tag/dataitem/predict/upload/divergence pipeline as single-shot anchors.
+  // The Content-Hash tag (a disclosure, opt-in) only ever applies to
+  // single-shot events; checkpoints pass no contentHash.
+  async function anchorEnvelopeBytes(
+    envelopeBytes: Uint8Array,
+    contentHash?: string,
+  ): Promise<{ txId: string }> {
+    const tags = await buildTags({
+      environment,
+      ...(options.scopeNamespace !== undefined
+        ? { scopeNamespace: options.scopeNamespace }
+        : {}),
+      ...(contentHash !== undefined ? { contentHash } : {}),
+    });
+    const dataItem = await buildSignedDataItem(wallet, envelopeBytes, tags);
+    const predictedTxId = await txIdFromDataItem(dataItem);
+    const receipt = await uploader.upload(dataItem);
+    if (receipt.txId !== predictedTxId) {
+      throw new TxIdMismatchError(predictedTxId, receipt.txId);
+    }
+    return { txId: receipt.txId };
+  }
+
+  const batches: Batch[] = [];
+
+  function batch(batchOptions: BatchOptions): Batch {
+    const b = new Batcher(batchOptions, {
+      signer,
+      subject,
+      environment,
+      store,
+      anchorCheckpointEnvelope: anchorEnvelopeBytes,
+      ...(options.timers !== undefined ? { timers: options.timers } : {}),
+    });
+    batches.push(b);
+    return b;
   }
 
   return {
     environment,
     anchor,
+    batch,
     publicKey: async () => bytesToHex(await signer.publicKey()),
     close: async () => {
-      // Single-shot anchors have nothing buffered; the batcher (Phase 3)
-      // flushes here. Part of the contract from day one so adapters can
-      // call it unconditionally.
+      // Flush every batch this anchorer minted. Adapters call this
+      // unconditionally on shutdown; single-shot use is a no-op.
+      await Promise.all(batches.map((b) => b.close()));
     },
   };
 }

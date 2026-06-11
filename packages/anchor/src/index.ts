@@ -15,6 +15,14 @@ export type {
   AnchorerOptions,
   ApiGuardConfig,
 } from "./anchorer";
+export { Batcher } from "./batch";
+export type {
+  AddHandle,
+  Batch,
+  BatchEventInput,
+  BatchOptions,
+  InclusionReceipt,
+} from "./batch";
 export { buildEventRecord, isValidEventType } from "./record";
 export { buildEnvelope } from "./envelope";
 export { LocalEd25519Signer } from "./signer";

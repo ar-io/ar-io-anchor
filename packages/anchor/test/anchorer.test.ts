@@ -69,7 +69,7 @@ describe("anchor() single-shot", () => {
     const receipt = await anchorer.anchor({ data: utf8("hello world"), ref: "s3://b/k" });
 
     expect(receipt.txId).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(receipt.explorerUrl).toBe(`https://viewblock.io/arweave/tx/${receipt.txId}`);
+    expect(receipt.gatewayUrl).toBe(`https://turbo-gateway.com/${receipt.txId}`);
     expect(receipt.contentHash).toBe(await sha256Hex(utf8("hello world")));
     expect(receipt.envelope.environment).toBe("dev");
     expect(receipt.envelope.payload_hash).toBe(receipt.payloadHash);

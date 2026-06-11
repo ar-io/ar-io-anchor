@@ -50,7 +50,7 @@ export function anchoredS3(client: S3Client, anchorer: Anchorer): AnchoredS3 {
           ContentType: "application/json",
           Body: JSON.stringify({
             txId: receipt.txId,
-            explorerUrl: receipt.explorerUrl,
+            gatewayUrl: receipt.gatewayUrl,
             envelope: receipt.envelope,
             record: JSON.parse(new TextDecoder().decode(receipt.recordBytes)),
             contentHash: receipt.contentHash,

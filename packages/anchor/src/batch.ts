@@ -54,7 +54,7 @@ export interface InclusionReceipt {
   checkpointTxId: string;
   checkpointEnvelope: EventsEnvelope;
   checkpointRecordBytes: Uint8Array;
-  explorerUrl: string;
+  gatewayUrl: string;
   // The inclusion proof (hex), verifiable offline via @ar.io/proof's
   // verifyInclusion: leafHash → auditPath → root === checkpoint merkle_root.
   root: string;
@@ -314,7 +314,7 @@ export class Batcher implements Batch {
           checkpointTxId: txId,
           checkpointEnvelope: checkpoint.envelope,
           checkpointRecordBytes: checkpoint.recordBytes,
-          explorerUrl: `https://viewblock.io/arweave/tx/${txId}`,
+          gatewayUrl: `https://turbo-gateway.com/${txId}`,
           root: bytesToHex(root),
           leafHash: bytesToHex(leaf.leafHash),
           leafIndex: i,

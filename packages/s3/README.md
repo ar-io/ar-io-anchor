@@ -23,7 +23,7 @@ const { receipt, provenanceKey } = await s3.putObject({
   Body: modelBytes,
 });
 
-receipt.txId;        // permanent Arweave anchor for these exact bytes
+receipt.txId;        // permanent ar.io anchor for these exact bytes
 provenanceKey;       // "prod/scorer.pkl.provenance.json" — verify offline, anytime
 ```
 
@@ -31,7 +31,7 @@ provenanceKey;       // "prod/scorer.pkl.provenance.json" — verify offline, an
 
 ## Verifying a sidecar
 
-The sidecar is JSON: `{ txId, explorerUrl, envelope, record, contentHash, environment }`. Anyone with the object and its sidecar can verify offline with the read-only [`@ar.io/proof`](https://www.npmjs.com/package/@ar.io/proof) — no ar.io service in the trust path:
+The sidecar is JSON: `{ txId, gatewayUrl, envelope, record, contentHash, environment }`. Anyone with the object and its sidecar can verify offline with the read-only [`@ar.io/proof`](https://www.npmjs.com/package/@ar.io/proof) — no ar.io service in the trust path:
 
 ```ts
 import { ed25519Verify, jcs, sha256Hex, utf8 } from "@ar.io/proof";
@@ -49,7 +49,7 @@ const { signature, ...pre } = sidecar.envelope;
 await ed25519Verify(signature, utf8(jcs(pre)), sidecar.envelope.public_key);
 ```
 
-Cross-check against the chain by fetching `txId` from any gateway (`https://arweave.net/raw/<txId>`) and comparing it to `sidecar.envelope`.
+Cross-check against the chain by fetching `txId` from any ar.io gateway (`https://<gateway>/raw/<txId>` — e.g. `turbo-gateway.com`; browse the network at [gateways.ar.io](https://gateways.ar.io)) and comparing it to `sidecar.envelope`.
 
 ## Semantics
 

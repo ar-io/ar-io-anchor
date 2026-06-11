@@ -40,7 +40,7 @@ function spyAnchorer() {
     envelopeBytes: new Uint8Array(0),
     recordBytes: new TextEncoder().encode(JSON.stringify(CANNED_RECORD)),
     environment: "dev",
-    explorerUrl: "https://viewblock.io/arweave/tx/TX_SPY",
+    gatewayUrl: "https://turbo-gateway.com/TX_SPY",
   };
   const anchorer = {
     environment: "dev",

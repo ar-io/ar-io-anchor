@@ -2,6 +2,8 @@
 
 Anchor-at-write-time for the ar.io verification stack: hash your data locally, sign a [Verifiable Event Envelope](https://github.com/ar-io/ar-io-proof/blob/main/specs/envelope-spec.md) under the `ario.events/v1` profile, and anchor it to ar.io — no relay, no SDK bloat, raw bytes never leave your system.
 
+**Write** through Turbo — ar.io's upload service. **Read** it back through any ar.io gateway — turbo-gateway.com, or any of the others at [gateways.ar.io](https://gateways.ar.io); you're never locked to one provider. Underneath, it's stored permanently on Arweave.
+
 ```bash
 npm install @ar.io/anchor
 ```
@@ -9,7 +11,7 @@ npm install @ar.io/anchor
 ```ts
 import { createAnchorer } from "@ar.io/anchor";
 
-// Dev mode: zero config. Auto identity + wallet, Turbo free tier.
+// Dev mode: zero config. Auto identity + wallet; small uploads are free on Turbo.
 // Proofs are permanently marked environment:"dev" inside the signed bytes.
 const ario = createAnchorer();
 
@@ -22,15 +24,15 @@ const receipt = await ario.anchor({
   chain: "orders",            // optional per-key hash chain
 });
 
-receipt.txId;          // Arweave tx id (Turbo-accepted = resolved)
+receipt.txId;          // ar.io transaction id (resolved once Turbo accepts the upload)
 receipt.envelope;      // the signed, Minimal-disclosure envelope
 receipt.recordBytes;   // RETAIN THESE — the committed event record
-receipt.explorerUrl;
+receipt.gatewayUrl;    // resolve on any ar.io gateway (gateways.ar.io)
 ```
 
 ## Batching
 
-High-frequency events (LLM steps, pipeline records): one Arweave write per window, while every event keeps its own offline-verifiable inclusion proof.
+High-frequency events (LLM steps, pipeline records): one ar.io write per window, while every event keeps its own offline-verifiable inclusion proof.
 
 ```ts
 const batch = ario.batch({
@@ -49,7 +51,7 @@ await ario.close(); // explicit flush — call it on shutdown; nothing is flushe
 
 ## Verifying
 
-Anyone with the envelope (on-chain, fetch by `txId`) and your retained `recordBytes` can verify offline with the read-only [`@ar.io/proof`](https://www.npmjs.com/package/@ar.io/proof):
+Fetch the envelope by `txId` from any ar.io gateway — `https://<gateway>/raw/<txId>` (e.g. `turbo-gateway.com`; browse the network at [gateways.ar.io](https://gateways.ar.io)). With that envelope and your retained `recordBytes`, anyone verifies offline with the read-only [`@ar.io/proof`](https://www.npmjs.com/package/@ar.io/proof):
 
 ```ts
 import { ed25519Verify, jcs, sha256Hex, utf8 } from "@ar.io/proof";

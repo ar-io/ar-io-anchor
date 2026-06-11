@@ -74,7 +74,7 @@ export interface AnchorReceipt {
   // event-record bytes that payload_hash commits to.
   recordBytes: Uint8Array;
   environment: Environment;
-  explorerUrl: string;
+  gatewayUrl: string;
 }
 
 export interface Anchorer {
@@ -165,7 +165,7 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
       envelopeBytes: built.envelopeBytes,
       recordBytes: built.recordBytes,
       environment,
-      explorerUrl: `https://viewblock.io/arweave/tx/${txId}`,
+      gatewayUrl: `https://turbo-gateway.com/${txId}`,
     };
   }
 

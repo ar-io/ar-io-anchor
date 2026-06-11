@@ -24,7 +24,7 @@ describe.skipIf(process.env.ANCHOR_LIVE_SMOKE !== "1")("live smoke (Turbo free t
 
     // eslint-disable-next-line no-console
     console.log(
-      `live smoke anchored: ${receipt.explorerUrl} (event ${receipt.eventId}, ` +
+      `live smoke anchored: ${receipt.gatewayUrl} (event ${receipt.eventId}, ` +
         `payload_hash ${receipt.payloadHash})`,
     );
   });
@@ -45,7 +45,7 @@ describe.skipIf(process.env.ANCHOR_LIVE_SMOKE !== "1")("live smoke (Turbo free t
 
     // eslint-disable-next-line no-console
     console.log(
-      `live checkpoint anchored: ${receipts[0]!.explorerUrl} ` +
+      `live checkpoint anchored: ${receipts[0]!.gatewayUrl} ` +
         `(root ${receipts[0]!.root}, ${receipts[0]!.leafCount} leaves)`,
     );
   });

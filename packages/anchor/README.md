@@ -1,6 +1,10 @@
 # @ar.io/anchor
 
-Anchor-at-write-time for the ar.io verification stack: hash your data locally, sign a [Verifiable Event Envelope](https://github.com/ar-io/ar-io-proof/blob/main/specs/envelope-spec.md) under the `ario.events/v1` profile, and upload it straight to Arweave via Turbo — no relay, no SDK bloat, raw bytes never leave your system.
+Anchor-at-write-time for the ar.io verification stack: hash your data locally, sign a [Verifiable Event Envelope](https://github.com/ar-io/ar-io-proof/blob/main/specs/envelope-spec.md) under the `ario.events/v1` profile, and anchor it to ar.io — no relay, no SDK bloat, raw bytes never leave your system.
+
+```bash
+npm install @ar.io/anchor
+```
 
 ```ts
 import { createAnchorer } from "@ar.io/anchor";
@@ -23,6 +27,25 @@ receipt.envelope;      // the signed, Minimal-disclosure envelope
 receipt.recordBytes;   // RETAIN THESE — the committed event record
 receipt.explorerUrl;
 ```
+
+## Batching
+
+High-frequency events (LLM steps, pipeline records): one Arweave write per window, while every event keeps its own offline-verifiable inclusion proof.
+
+```ts
+const batch = ario.batch({
+  maxEvents: 100,     // flush when full…
+  maxAge: 60_000,     // …or 60s after the first buffered event…
+  flushOnIdle: 5_000, // …or 5s after the last add. First trigger wins.
+});
+
+const receipt = await batch.add({ data: JSON.stringify(step) }).receipt();
+// → { checkpointTxId, root, leafHash, leafIndex, auditPath, envelope, recordBytes, ... }
+
+await ario.close(); // explicit flush — call it on shutdown; nothing is flushed for you
+```
+
+`add()` is synchronous (bytes/string/pre-computed hash — no streams here). A batch of one is valid. With the default in-memory buffer a crash loses buffered *proofs*, never data — every event is re-anchorable from your system.
 
 ## Verifying
 

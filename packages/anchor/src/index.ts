@@ -7,3 +7,16 @@
 // this package consumes its primitives and never re-implements verification.
 
 export { PROFILE_SPEC_VERSION } from "./profile";
+export { buildEventRecord, isValidEventType } from "./record";
+export { buildEnvelope } from "./envelope";
+export { LocalEd25519Signer } from "./signer";
+export type {
+  BuildEnvelopeInput,
+  BuildRecordInput,
+  BuiltEnvelope,
+  Environment,
+  EventRecord,
+  EventsEnvelope,
+  EventsSubject,
+  Signer,
+} from "./types";

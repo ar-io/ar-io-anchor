@@ -28,4 +28,25 @@ describe.skipIf(process.env.ANCHOR_LIVE_SMOKE !== "1")("live smoke (Turbo free t
         `payload_hash ${receipt.payloadHash})`,
     );
   });
+
+  it("batches three events into one live checkpoint", { timeout: 120_000 }, async () => {
+    const anchorer = createAnchorer();
+    const batch = anchorer.batch({ maxEvents: 3, name: "live-smoke" });
+    const stamp = new Date().toISOString();
+    const receipts = await Promise.all(
+      [0, 1, 2].map((i) =>
+        batch.add({ data: `live batch event ${i} ${stamp}` }).receipt(),
+      ),
+    );
+    await anchorer.close();
+
+    expect(new Set(receipts.map((r) => r.checkpointTxId)).size).toBe(1);
+    expect(receipts.map((r) => r.leafIndex)).toEqual([0, 1, 2]);
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `live checkpoint anchored: ${receipts[0]!.explorerUrl} ` +
+        `(root ${receipts[0]!.root}, ${receipts[0]!.leafCount} leaves)`,
+    );
+  });
 });

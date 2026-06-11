@@ -1,0 +1,83 @@
+# Publishes the ar-io-anchor monorepo's two packages — @ar.io/anchor and
+# @ar.io/anchor-s3 — to npm via OIDC trusted publishing. No long-lived npm
+# tokens (the npm mirror of ar-io-proof's release-ts.yml flow). This repo is
+# PUBLIC, so npm provenance works: --provenance is ON.
+#
+# npmjs.com side (one-time, set on BOTH packages → "Trusted Publisher" →
+# GitHub Actions; identical config for each of @ar.io/anchor and
+# @ar.io/anchor-s3):
+#   organization: ar-io
+#   repository:   ar-io-anchor
+#   workflow:     release-anchor.yml      (filename must match exactly)
+#   environment:  (leave blank)
+#
+# The two packages move in LOCKSTEP at one version. Real publish: push an
+# `anchor-vX.Y.Z` tag whose version matches BOTH packages/*/package.json, with
+# packages/s3 declaring `^X.Y.Z` of the core (the guard enforces all three, so
+# a forgotten s3→core dep bump fails loudly instead of shipping a broken dep).
+# @ar.io/anchor publishes FIRST — the s3 adapter depends on it.
+#
+# Dry-run: workflow_dispatch — runs the ENTIRE path including
+# `npm publish --dry-run` for both packages. Lesson from the v1.2.0 cosign
+# failure: a dry-run that skips the publish step validates nothing. Fire one
+# after the repo is public + the trusted publishers are set, before the first
+# real tag.
+#
+# Tag namespace: anchor-v* — does not overlap any other tag namespace.
+
+name: release-anchor
+
+on:
+  push:
+    tags: ['anchor-v*.*.*']
+  workflow_dispatch: # full dry-run: build, test, pack — publishes nothing
+
+permissions:
+  contents: read
+  id-token: write # npm OIDC trusted publishing
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Pin npm to a trusted-publishing-capable version
+        # OIDC trusted publishing needs npm >= 11.5.1; Node images float their
+        # bundled npm. Floor it explicitly (a floating tool default broke the
+        # first v1.2.0 release cut — don't repeat that with npm).
+        run: |
+          npm install -g npm@^11.5.1
+          npm --version
+      - name: Python cryptography (the ANS-104 cross-product validator needs it)
+        run: python3 -m pip install --user cryptography
+      - run: npm ci
+      - name: Build both workspaces (typecheck + tests resolve from built dist/)
+        run: npm run build
+      - run: npm run typecheck
+      - name: Tests — all 8 PRD seams (live smoke stays gated off; ANCHOR_LIVE_SMOKE unset)
+        run: npm test
+      - name: Tag ↔ versions guard (lockstep + s3→core dep)
+        if: github.event_name == 'push'
+        run: |
+          TAG="${GITHUB_REF_NAME#anchor-v}"
+          CORE="$(node -p "require('./packages/anchor/package.json').version")"
+          S3="$(node -p "require('./packages/s3/package.json').version")"
+          S3DEP="$(node -p "require('./packages/s3/package.json').dependencies['@ar.io/anchor']")"
+          fail=0
+          [ "$CORE" = "$TAG" ] || { echo "::error::@ar.io/anchor version $CORE != tag anchor-v$TAG"; fail=1; }
+          [ "$S3" = "$TAG" ] || { echo "::error::@ar.io/anchor-s3 version $S3 != tag anchor-v$TAG"; fail=1; }
+          [ "$S3DEP" = "^$TAG" ] || { echo "::error::packages/s3 depends on @ar.io/anchor '$S3DEP', expected '^$TAG' — bump it in the same release commit"; fail=1; }
+          exit $fail
+      - name: Publish @ar.io/anchor (core first; dry-run on dispatch)
+        working-directory: packages/anchor
+        # --provenance ON: public repo, so npm attests the build from source.
+        # On workflow_dispatch this is --dry-run (packs + validates, publishes
+        # nothing); on an anchor-v* tag push it publishes.
+        run: npm publish --provenance --access public ${{ github.event_name == 'workflow_dispatch' && '--dry-run' || '' }}
+      - name: Publish @ar.io/anchor-s3 (depends on core; dry-run on dispatch)
+        working-directory: packages/s3
+        run: npm publish --provenance --access public ${{ github.event_name == 'workflow_dispatch' && '--dry-run' || '' }}

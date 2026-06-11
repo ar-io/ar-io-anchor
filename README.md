@@ -1,6 +1,6 @@
 # ar-io-anchor
 
-> **Status: Wave 3 T-SDK lane.** Phases 1–4 complete (profile + envelope assembly, anchor single-shot, Merkle batcher, S3 adapter). Working repo name — packages are `@ar.io/anchor` and `@ar.io/anchor-s3`. PRD: [ar-io-agent#11](https://github.com/ar-io/ar-io-agent/issues/11). Family contract: [`envelope-spec.md`](https://github.com/ar-io/ar-io-proof/blob/main/specs/envelope-spec.md) (profile `ario.events/v1`, registered v1.2). No npm publish without coordinator green light.
+> Packages `@ar.io/anchor` and `@ar.io/anchor-s3`, v0.1.0. Profile [`ario.events/v1`](docs/profile-ario.events-v1.md), registered in [`envelope-spec.md`](https://github.com/ar-io/ar-io-proof/blob/main/specs/envelope-spec.md) §4. Origin: [ar-io-agent#11](https://github.com/ar-io/ar-io-agent/issues/11).
 
 The **TypeScript write path** of the ar.io verification stack: take bytes (or a pre-computed hash) plus minimal metadata → signed event envelope under `ario.events/v1` → ANS-104 data item → Turbo upload → receipt. Raw data is hashed locally and **never uploaded**. The verify side is the separate read-only [`@ar.io/proof`](https://www.npmjs.com/package/@ar.io/proof).
 
@@ -31,7 +31,11 @@ const s3 = anchoredS3(new S3Client({}), ario);
 await s3.putObject({ Bucket, Key, Body }); // object + on-chain anchor + sidecar record
 ```
 
-Production structurally refuses auto-generated secrets — `createAnchorer({ environment: "production", signer, wallet, subject })` throws without explicit credentials, and `environment` is stamped *inside the signed bytes*.
+Production structurally refuses auto-generated secrets — `createAnchorer({ environment: "production", signer, wallet, subject })` throws without explicit credentials, and `environment` is stamped *inside the signed bytes*. Setup and the typed-error table: [`packages/anchor/README.md`](packages/anchor/README.md).
+
+## Examples
+
+Runnable, in [`examples/`](examples/): anchor + offline verify, batch + inclusion proof, third-party verification of any on-chain envelope, and the S3 round-trip. `npm install && npm run build`, then `node examples/01-anchor.mjs`.
 
 ## Packages
 
@@ -45,7 +49,7 @@ Production structurally refuses auto-generated secrets — `createAnchorer({ env
 - Profile: [`docs/profile-ario.events-v1.md`](docs/profile-ario.events-v1.md) — Minimal disclosure, external commitment, `environment` required.
 - Corpus: byte-for-byte against `test-vectors-v1.1` (vendored, [re-pin discipline](packages/anchor/test-vectors/VENDORING.md)).
 - ANS-104: byte-pinned vs arbundles (dev-only dep) + re-verified by the agent's independent Python parser in CI.
-- Live: single-shot [`nFwoc…WuK`](https://viewblock.io/arweave/tx/nFwocIhOfbM3VxjKuyhnEPdP4ssAIYlFOCslcbFsWuk), batched checkpoint (3 leaves, one write) [`Jvnc…DpM`](https://viewblock.io/arweave/tx/JvncbVlUaf0ggmkAbS1coi6eeI2n1oxseoexYdaYDpM) — both gateway-fetched and cross-verified by the Python kernel.
+- Live: single-shot [`nFwoc…Wuk`](https://viewblock.io/arweave/tx/nFwocIhOfbM3VxjKuyhnEPdP4ssAIYlFOCslcbFsWuk), batched checkpoint (3 leaves, one write) [`Jvnc…DpM`](https://viewblock.io/arweave/tx/JvncbVlUaf0ggmkAbS1coi6eeI2n1oxseoexYdaYDpM) — both gateway-fetched and cross-verified by the Python kernel.
 
 ## Development
 

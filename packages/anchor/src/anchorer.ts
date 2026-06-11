@@ -8,22 +8,22 @@
 import { bytesToHex } from "@ar.io/proof";
 import { sha256 } from "@noble/hashes/sha2";
 
-import { Batcher, type Batch, type BatchOptions, type BatcherContext } from "./batch";
-import { buildSignedDataItem, SolanaWalletSigner, txIdFromDataItem } from "./dataitem";
-import type { DataItemSigner } from "./dataitem";
-import { buildEnvelope } from "./envelope";
-import { ProductionConfigError, TxIdMismatchError } from "./errors";
-import { buildEventRecord } from "./record";
-import { LocalEd25519Signer } from "./signer";
-import { MemoryStore, type Store } from "./store";
-import { buildTags } from "./tags";
-import { TurboUploader, type TurboUploaderOptions, type Uploader } from "./turbo";
+import { Batcher, type Batch, type BatchOptions, type BatcherContext } from "./batch.js";
+import { buildSignedDataItem, SolanaWalletSigner, txIdFromDataItem } from "./dataitem.js";
+import type { DataItemSigner } from "./dataitem.js";
+import { buildEnvelope } from "./envelope.js";
+import { ProductionConfigError, TxIdMismatchError } from "./errors.js";
+import { buildEventRecord } from "./record.js";
+import { LocalEd25519Signer } from "./signer.js";
+import { MemoryStore, type Store } from "./store.js";
+import { buildTags } from "./tags.js";
+import { TurboUploader, type TurboUploaderOptions, type Uploader } from "./turbo.js";
 import type {
   Environment,
   EventsEnvelope,
   EventsSubject,
   Signer,
-} from "./types";
+} from "./types.js";
 
 export interface ApiGuardConfig {
   // Breadcrumb (PRD step ⑥ / Wave 3 paired api-guard lane): production-mode

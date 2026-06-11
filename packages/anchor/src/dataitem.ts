@@ -24,9 +24,9 @@
 
 import { sha256Bytes, utf8 } from "@ar.io/proof";
 
-import { encodeAvroTags, type Tag } from "./avro";
-import { deepHashList } from "./deephash";
-import type { Signer } from "./types";
+import { encodeAvroTags, type Tag } from "./avro.js";
+import { deepHashList } from "./deephash.js";
+import type { Signer } from "./types.js";
 
 // Funding-chain signer for data items — distinct from (and never conflated
 // with) the envelope identity Signer. Adding a chain (e.g. Ethereum

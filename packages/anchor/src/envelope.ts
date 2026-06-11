@@ -7,8 +7,8 @@
 
 import { bytesToHex, jcs, sha256Hex, utf8 } from "@ar.io/proof";
 
-import { PROFILE_SPEC_VERSION } from "./profile";
-import type { BuildEnvelopeInput, BuiltEnvelope, EventsEnvelope } from "./types";
+import { PROFILE_SPEC_VERSION } from "./profile.js";
+import type { BuildEnvelopeInput, BuiltEnvelope, EventsEnvelope } from "./types.js";
 
 const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const RFC3339_Z_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;

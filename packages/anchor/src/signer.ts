@@ -5,7 +5,7 @@
 
 import * as ed from "@noble/ed25519";
 
-import type { Signer } from "./types";
+import type { Signer } from "./types.js";
 
 // @noble/ed25519 needs SHA-512; wire it to WebCrypto exactly as @ar.io/proof
 // does (no @noble/hashes dependency). Assigning is idempotent.

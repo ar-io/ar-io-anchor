@@ -5,9 +5,9 @@
 
 import { sha256Hex, utf8 } from "@ar.io/proof";
 
-import type { Tag } from "./avro";
-import { PROFILE_SPEC_VERSION } from "./profile";
-import type { Environment } from "./types";
+import type { Tag } from "./avro.js";
+import { PROFILE_SPEC_VERSION } from "./profile.js";
+import type { Environment } from "./types.js";
 
 export interface TagOptions {
   environment: Environment;

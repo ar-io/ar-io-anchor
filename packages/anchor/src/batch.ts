@@ -22,10 +22,10 @@
 import { auditPath, bytesToHex, leafHash, merkleRoot } from "@ar.io/proof";
 import { sha256 } from "@noble/hashes/sha2";
 
-import { buildEnvelope } from "./envelope";
-import { buildEventRecord } from "./record";
-import type { Store } from "./store";
-import type { Environment, EventsEnvelope, EventsSubject, Signer } from "./types";
+import { buildEnvelope } from "./envelope.js";
+import { buildEventRecord } from "./record.js";
+import type { Store } from "./store.js";
+import type { Environment, EventsEnvelope, EventsSubject, Signer } from "./types.js";
 
 export interface BatchOptions {
   // Flush triggers — first one wins. At least one must be set (or rely

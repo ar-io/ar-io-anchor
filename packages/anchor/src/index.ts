@@ -6,26 +6,26 @@
 // inclusion proofs. The verify side is the separate read-only @ar.io/proof —
 // this package consumes its primitives and never re-implements verification.
 
-export { PROFILE_SPEC_VERSION } from "./profile";
-export { createAnchorer } from "./anchorer";
+export { PROFILE_SPEC_VERSION } from "./profile.js";
+export { createAnchorer } from "./anchorer.js";
 export type {
   AnchorInput,
   AnchorReceipt,
   Anchorer,
   AnchorerOptions,
   ApiGuardConfig,
-} from "./anchorer";
-export { Batcher } from "./batch";
+} from "./anchorer.js";
+export { Batcher } from "./batch.js";
 export type {
   AddHandle,
   Batch,
   BatchEventInput,
   BatchOptions,
   InclusionReceipt,
-} from "./batch";
-export { buildEventRecord, isValidEventType } from "./record";
-export { buildEnvelope } from "./envelope";
-export { LocalEd25519Signer } from "./signer";
+} from "./batch.js";
+export { buildEventRecord, isValidEventType } from "./record.js";
+export { buildEnvelope } from "./envelope.js";
+export { LocalEd25519Signer } from "./signer.js";
 export {
   SIGNATURE_TYPE_ARWEAVE,
   SIGNATURE_TYPE_SOLANA,
@@ -33,17 +33,17 @@ export {
   buildSignedDataItem,
   dataItemDeepHash,
   txIdFromDataItem,
-} from "./dataitem";
-export type { DataItemSigner } from "./dataitem";
-export { deepHashChunk, deepHashList } from "./deephash";
-export { encodeAvroTags } from "./avro";
-export type { Tag } from "./avro";
-export { buildTags } from "./tags";
-export type { TagOptions } from "./tags";
-export { MemoryStore } from "./store";
-export type { PendingLeaf, Store } from "./store";
-export { DEFAULT_TURBO_UPLOAD_URL, TurboUploader } from "./turbo";
-export type { TurboUploaderOptions, UploadReceipt, Uploader } from "./turbo";
+} from "./dataitem.js";
+export type { DataItemSigner } from "./dataitem.js";
+export { deepHashChunk, deepHashList } from "./deephash.js";
+export { encodeAvroTags } from "./avro.js";
+export type { Tag } from "./avro.js";
+export { buildTags } from "./tags.js";
+export type { TagOptions } from "./tags.js";
+export { MemoryStore } from "./store.js";
+export type { PendingLeaf, Store } from "./store.js";
+export { DEFAULT_TURBO_UPLOAD_URL, TurboUploader } from "./turbo.js";
+export type { TurboUploaderOptions, UploadReceipt, Uploader } from "./turbo.js";
 export {
   AnchorError,
   FundingExhaustedError,
@@ -51,8 +51,8 @@ export {
   TxIdMismatchError,
   UploadFailedError,
   UploadRejectedError,
-} from "./errors";
-export type { AnchorErrorCode } from "./errors";
+} from "./errors.js";
+export type { AnchorErrorCode } from "./errors.js";
 export type {
   BuildEnvelopeInput,
   BuildRecordInput,
@@ -62,4 +62,4 @@ export type {
   EventsEnvelope,
   EventsSubject,
   Signer,
-} from "./types";
+} from "./types.js";

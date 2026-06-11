@@ -25,4 +25,4 @@ provenanceKey;       // "prod/scorer.pkl.provenance.json" — verify offline, an
 
 Later, anyone with the object and its sidecar can prove the bytes are exactly what was stored — using the read-only [`@ar.io/proof`](https://www.npmjs.com/package/@ar.io/proof) verifier, no ar.io service in the trust path.
 
-For production (explicit signing key, funded wallet): see [`@ar.io/anchor`](../anchor/README.md)'s production gate.
+For production (explicit signing key, funded wallet) and error handling: see [`@ar.io/anchor`](https://www.npmjs.com/package/@ar.io/anchor). If anchoring fails, the object is already stored but no sidecar is written — the put itself is never rolled back.

@@ -24,16 +24,53 @@ receipt.recordBytes;   // RETAIN THESE — the committed event record
 receipt.explorerUrl;
 ```
 
-Production structurally refuses auto-generated secrets:
+## Verifying
+
+Anyone with the envelope (on-chain, fetch by `txId`) and your retained `recordBytes` can verify offline with the read-only [`@ar.io/proof`](https://www.npmjs.com/package/@ar.io/proof):
 
 ```ts
-createAnchorer({
-  environment: "production", // THROWS without explicit credentials
-  signer,                    // Signer interface — never raw key bytes
-  wallet,                    // funded data-item wallet (Solana ed25519 default)
+import { ed25519Verify, jcs, sha256Hex, utf8 } from "@ar.io/proof";
+
+const { signature, ...preSignature } = receipt.envelope;
+await ed25519Verify(signature, utf8(jcs(preSignature)), receipt.envelope.public_key); // true
+(await sha256Hex(receipt.recordBytes)) === receipt.envelope.payload_hash;             // true
+```
+
+Batched events verify their inclusion the same way — see the runnable [examples](https://github.com/ar-io/ar-io-anchor/tree/main/examples).
+
+## Production
+
+Production structurally refuses auto-generated secrets — it throws unless you pass all three:
+
+```ts
+import { createAnchorer, LocalEd25519Signer, SolanaWalletSigner } from "@ar.io/anchor";
+
+const ario = createAnchorer({
+  environment: "production",
+  // Identity key (signs envelopes). Any { publicKey(), sign() } works —
+  // file seed shown; Vault/KMS adapters implement the same interface.
+  signer: LocalEd25519Signer.fromSeedHex(process.env.ANCHOR_IDENTITY_SEED!),
+  // Funding wallet (pays Turbo) — a different key, Solana ed25519 default.
+  wallet: new SolanaWalletSigner(LocalEd25519Signer.fromSeedHex(process.env.ANCHOR_WALLET_SEED!)),
   subject: { type: "producer", producer_id: "acme-app" },
 });
 ```
+
+The two keys are deliberately separate: identity (who signed) vs money (who pays). Fund the wallet with Turbo Credits at https://turbo.ardrive.io.
+
+## Errors
+
+All errors carry a machine-checkable `code`:
+
+| Class (`code`) | When | Do |
+|---|---|---|
+| `FundingExhaustedError` (`FUNDING_EXHAUSTED`) | Turbo 402 — wallet out of funds | Fund the wallet; the message includes instructions. Not retryable as-is. |
+| `UploadFailedError` (`UPLOAD_FAILED`) | 5xx/429/network, retries exhausted | Transient — safe to retry the same `anchor()` call. |
+| `UploadRejectedError` (`UPLOAD_REJECTED`) | Terminal 4xx from Turbo | Inspect the detail; retrying the same bytes won't help. |
+| `TxIdMismatchError` (`TXID_MISMATCH`) | Upstream returned a TX ID that doesn't match the signature-derived one | Should never happen with an honest upstream — treat the upload as suspect. |
+| `ProductionConfigError` (`PRODUCTION_CONFIG`) | Production mode without explicit signer/wallet/subject | Supply the missing credentials; dev secrets cannot reach production. |
+
+A failed **batch** window rejects only that window's `receipt()` promises — the chain head is untouched and the next window proceeds; re-`add` the events to re-anchor them.
 
 ## Guarantees
 
@@ -44,4 +81,4 @@ createAnchorer({
 
 ## Conformance
 
-Byte-for-byte against the family corpus (`ar-io-proof` `test-vectors`); ANS-104 output byte-pinned vs arbundles and re-verified by an independent Python parser in CI. See the [profile spec](../../docs/profile-ario.events-v1.md).
+Byte-for-byte against the family corpus (`ar-io-proof` `test-vectors-v1.1`); ANS-104 output byte-pinned vs arbundles and re-verified by an independent Python parser in CI. See the [profile spec](https://github.com/ar-io/ar-io-anchor/blob/main/docs/profile-ario.events-v1.md).

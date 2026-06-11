@@ -3,8 +3,8 @@
 // (event_type, subject, previous_hash) live HERE, in the record core — never
 // in the on-chain envelope.
 
-import { PROFILE_SPEC_VERSION } from "./profile";
-import type { BuildRecordInput, EventRecord, EventsSubject } from "./types";
+import { PROFILE_SPEC_VERSION } from "./profile.js";
+import type { BuildRecordInput, EventRecord, EventsSubject } from "./types.js";
 
 // Profile §4 grammar: lowercase snake segments, dot-namespaced, ≤64 chars.
 const EVENT_TYPE_RE = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;

@@ -5,7 +5,7 @@
 // Go TurboUploader: bounded HTTP-level retries on transient faults, typed
 // terminal errors otherwise.
 
-import { FundingExhaustedError, UploadFailedError, UploadRejectedError } from "./errors";
+import { FundingExhaustedError, UploadFailedError, UploadRejectedError } from "./errors.js";
 
 export interface UploadReceipt {
   txId: string;

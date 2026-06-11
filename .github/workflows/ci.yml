@@ -1,0 +1,31 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v5.0.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install python validator deps
+        run: python3 -m pip install --user cryptography
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+      - name: Assert python validator ran (no silent skip)
+        run: |
+          if npm test 2>&1 | grep -q "SKIPPED — python3"; then
+            echo "independent ANS-104 validation was skipped in CI" >&2
+            exit 1
+          fi

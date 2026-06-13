@@ -1,0 +1,13 @@
+{
+  "name": "lane-4b-framework-spikes",
+  "private": true,
+  "type": "module",
+  "description": "Lane 4B proof-of-life spikes: LangChain.js + Vercel AI SDK seams feeding @ar.io/anchor's Merkle batcher. Not a published package.",
+  "dependencies": {
+    "@ar.io/anchor": "^0.1.2",
+    "@ar.io/proof": "^0.1.2",
+    "@langchain/core": "^1.1.48",
+    "ai": "^6.0.203",
+    "zod": "^4.4.3"
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "name": "@ar.io/anchor-langchain",
+  "version": "0.1.0",
+  "description": "Anchor your LangChain.js agent's run tree as it executes: one callback handler turns every chain/LLM/tool step into a Merkle-batched, individually inclusion-proofed provenance record on ar.io — prompts and outputs are hashed locally and never uploaded.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "src",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@ar.io/anchor": "^0.1.2"
+  },
+  "peerDependencies": {
+    "@langchain/core": "^1.0.0"
+  },
+  "devDependencies": {
+    "@langchain/core": "^1.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ar-io/ar-io-anchor.git",
+    "directory": "packages/langchain"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "ar.io",
+    "arweave",
+    "langchain",
+    "ai",
+    "agents",
+    "provenance",
+    "audit-trail",
+    "anchoring"
+  ]
+}

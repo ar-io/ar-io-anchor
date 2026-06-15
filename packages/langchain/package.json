@@ -1,7 +1,7 @@
 {
   "name": "@ar.io/anchor-langchain",
   "version": "0.1.0",
-  "description": "Anchor your LangChain.js agent's run tree as it executes: one callback handler turns every chain/LLM/tool step into a Merkle-batched, individually inclusion-proofed provenance record on ar.io — prompts and outputs are hashed locally and never uploaded.",
+  "description": "Anchor your LangChain.js agent's run tree as it executes: one callback handler turns every chain/LLM/tool step into a Merkle-batched, individually inclusion-proofed provenance record on ar.io \u2014 prompts and outputs are hashed locally and never uploaded.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -28,7 +28,8 @@
     "@langchain/core": "^1.0.0"
   },
   "devDependencies": {
-    "@langchain/core": "^1.0.0"
+    "@langchain/core": "^1.0.0",
+    "@ar.io/proof": "^0.2.0"
   },
   "repository": {
     "type": "git",

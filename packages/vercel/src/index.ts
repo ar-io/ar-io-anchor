@@ -44,6 +44,12 @@ export const EVENT_TYPES = [
 
 export type VercelEventType = (typeof EVENT_TYPES)[number];
 
+// The model's stream-part type, derived from the middleware contract we
+// already import — so the stream tap is type-safe (discriminated on `type`)
+// without taking a direct dependency on @ai-sdk/provider.
+type StreamResult = Awaited<ReturnType<NonNullable<LanguageModelMiddleware["wrapStream"]>>>;
+type StreamPart = StreamResult["stream"] extends ReadableStream<infer P> ? P : never;
+
 // What `mapPayload` sees for every event, before anything is committed.
 export interface VercelAnchorEvent {
   type: VercelEventType;
@@ -73,9 +79,17 @@ export interface AnchorMiddlewareOptions {
   // JSON-serialize, an add after close). Provenance must never crash the
   // model call; default console.warn.
   warn?: (message: string) => void;
+  // Upper bound on distinct chain keys tracked at once (LRU). A long-lived
+  // middleware that sees a new correlation id per request would otherwise
+  // grow its chain-state map without bound (unlike the langchain adapter,
+  // whose run tree has an observable end). Default 10_000 — sized so
+  // request-scoped ids never evict an active chain in practice; an id
+  // evicted after long inactivity simply restarts at seq 0 if it returns.
+  maxTrackedChains?: number;
 }
 
 const DEFAULT_BATCH: BatchOptions = { maxEvents: 64, flushOnIdle: 2_000, name: "vercel-ai" };
+const DEFAULT_MAX_TRACKED_CHAINS = 10_000;
 
 interface ChainState {
   seq: number;
@@ -95,7 +109,9 @@ export class AnchorMiddleware implements LanguageModelMiddleware {
   readonly #batch: Batch;
   readonly #mapPayload: AnchorMiddlewareOptions["mapPayload"];
   readonly #warn: (message: string) => void;
-  // Per-chain-key flat sequence state.
+  readonly #maxTrackedChains: number;
+  // Per-chain-key flat sequence state. Bounded LRU (see #maxTrackedChains):
+  // Map insertion order is the recency order; #emit re-inserts on each event.
   readonly #chains = new Map<string, ChainState>();
   // The fallback chain id for calls with no caller correlation id.
   readonly #sessionId = globalThis.crypto.randomUUID();
@@ -104,6 +120,7 @@ export class AnchorMiddleware implements LanguageModelMiddleware {
     this.#batch = anchorer.batch(options.batch ?? DEFAULT_BATCH);
     this.#mapPayload = options.mapPayload;
     this.#warn = options.warn ?? ((m) => console.warn(`[ario-anchor-vercel] ${m}`));
+    this.#maxTrackedChains = options.maxTrackedChains ?? DEFAULT_MAX_TRACKED_CHAINS;
   }
 
   // ---- lifecycle ---------------------------------------------------------
@@ -159,20 +176,28 @@ export class AnchorMiddleware implements LanguageModelMiddleware {
     }
 
     // Anchor stream completion at flush — the stream's natural batch
-    // boundary. The chunks pass through untouched.
+    // boundary. Chunks pass through untouched. A provider failure arrives in
+    // v3 as an in-band `error` part (not a stream rejection), so we capture
+    // it here and emit a terminal stream_error instead of stream_end —
+    // symmetric with the generate path. A hard transport abort (the stream
+    // rejects with no error part) fires neither: stream_start stands and its
+    // absence-of-completion is the signal (the dangling chain pointer).
     let parts = 0;
     let finishReason: unknown;
-    const self = this;
-    const tap = new TransformStream({
-      transform(chunk, controller) {
+    let streamError: unknown;
+    const tap = new TransformStream<StreamPart, StreamPart>({
+      transform: (chunk, controller) => {
         parts++;
-        if (chunk && typeof chunk === "object" && (chunk as { type?: string }).type === "finish") {
-          finishReason = (chunk as { finishReason?: unknown }).finishReason;
-        }
+        if (chunk.type === "finish") finishReason = chunk.finishReason;
+        else if (chunk.type === "error") streamError = chunk.error;
         controller.enqueue(chunk);
       },
-      flush() {
-        self.#emit("vercel_ai.stream_end", { parts, finishReason }, chainKeyInfo);
+      flush: () => {
+        if (streamError !== undefined) {
+          this.#emit("vercel_ai.stream_error", { error: streamError, parts }, chainKeyInfo);
+        } else {
+          this.#emit("vercel_ai.stream_end", { parts, finishReason }, chainKeyInfo);
+        }
       },
     });
 
@@ -234,7 +259,16 @@ export class AnchorMiddleware implements LanguageModelMiddleware {
       });
 
       // Advance the chain only for events that were actually committed.
+      // delete+set moves this key to the most-recently-used position (Map
+      // preserves insertion order), then evict the least-recently-used key
+      // if we're over the bound — keeps long-lived middleware from leaking
+      // one entry per distinct correlation id forever.
+      this.#chains.delete(chainKey);
       this.#chains.set(chainKey, { seq: chain.seq + 1, lastEventId: eventId });
+      if (this.#chains.size > this.#maxTrackedChains) {
+        const lru = this.#chains.keys().next().value;
+        if (lru !== undefined) this.#chains.delete(lru);
+      }
       this.receipts.push(handle.receipt());
     } catch (err) {
       // Provenance must never take the model call down with it.

@@ -125,6 +125,49 @@ describe("AnchorMiddleware — stream", () => {
     expect(end.parts).toBe(3);
     expect(end.finishReason).toBe("stop");
   });
+
+  it("captures an in-band error part as a terminal stream_error (not stream_end)", async () => {
+    const { anchorer, adds } = spyAnchorer();
+    const mw = anchorMiddleware(anchorer);
+
+    const upstream = convertArrayToReadableStream([
+      { type: "text-delta", id: "1", delta: "partial" },
+      { type: "error", error: { message: "provider blew up" } },
+    ]);
+    const { stream } = await mw.wrapStream({
+      doStream: async () => ({ stream: upstream }),
+      params: params("p"),
+    } as never);
+
+    const reader = stream.getReader();
+    for (;;) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+
+    // Terminal event is stream_error, carrying the in-band error; no stream_end.
+    expect(adds.map((a) => a.type)).toEqual(["vercel_ai.stream_start", "vercel_ai.stream_error"]);
+    const errEvent = JSON.parse(adds[1]!.data as string);
+    expect(errEvent.error).toEqual({ message: "provider blew up" });
+    expect(errEvent.parts).toBe(2);
+  });
+
+  it("anchors stream_error when the doStream() call itself rejects", async () => {
+    const { anchorer, adds } = spyAnchorer();
+    const mw = anchorMiddleware(anchorer);
+
+    await expect(
+      mw.wrapStream({
+        doStream: async () => {
+          throw new Error("stream setup failed");
+        },
+        params: params("p"),
+      } as never),
+    ).rejects.toThrow("stream setup failed");
+
+    expect(adds.map((a) => a.type)).toEqual(["vercel_ai.stream_start", "vercel_ai.stream_error"]);
+    expect(JSON.parse(adds[1]!.data as string).error).toBe("stream setup failed");
+  });
 });
 
 describe("chain key resolution — correlation id vs. session fallback", () => {
@@ -258,6 +301,30 @@ describe("lifecycle + safety", () => {
     const { anchorer, batchOptions } = spyAnchorer();
     anchorMiddleware(anchorer, { batch: { maxEvents: 7, name: "custom" } });
     expect(batchOptions[0]).toEqual({ maxEvents: 7, name: "custom" });
+  });
+
+  it("bounds chain-state memory: evicts the least-recently-used chain past the cap", async () => {
+    const { anchorer, adds } = spyAnchorer();
+    // Tiny cap so the eviction is observable. Each generate emits 2 events
+    // (start+end) on its correlation id's chain.
+    const mw = anchorMiddleware(anchorer, { maxTrackedChains: 2 });
+    const gen = (id: string) =>
+      mw.wrapGenerate({
+        doGenerate: async () => ({ content: [], usage: {}, finishReason: "stop" }),
+        params: params("p", { ario: { chainKey: id } }),
+      } as never);
+
+    await gen("a"); // chains: {a}
+    await gen("b"); // chains: {a,b}
+    await gen("c"); // a evicted (LRU) → chains: {b,c}
+    await gen("a"); // a was evicted, so it restarts at seq 0
+
+    const aEvents = adds.map(meta).filter((x) => x.chain_key === "a");
+    // First "a" run: seq 0,1. After eviction, the second "a" run restarts at 0.
+    expect(aEvents.map((x) => x.seq)).toEqual([0, 1, 0, 1]);
+    // "b" was bumped by its own use and never evicted → continuous.
+    const bEvents = adds.map(meta).filter((x) => x.chain_key === "b");
+    expect(bEvents.map((x) => x.seq)).toEqual([0, 1]);
   });
 });
 

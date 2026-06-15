@@ -52,7 +52,7 @@ Either way it's a flat sequence, not a tree: each record points at its predecess
 
 ## Event vocabulary
 
-`vercel_ai.generate_start/_end/_error` and `vercel_ai.stream_start/_end/_error` — one event type per anchored operation (exported as `EVENT_TYPES`). Streams anchor `stream_end` at stream completion; chunks pass through untouched.
+`vercel_ai.generate_start/_end/_error` and `vercel_ai.stream_start/_end/_error` — one event type per anchored operation (exported as `EVENT_TYPES`). Each operation gets exactly one terminal event: `_end` on success, `_error` on failure. For streams, a provider failure arrives in-band as an `error` part and anchors `stream_error`; chunks pass through untouched. A hard transport abort (the stream rejects with no error part) anchors neither terminal event — the `stream_start` stands and its missing completion is itself the signal (its chain pointer dangles).
 
 ## Controlling what the hash commits to
 
@@ -93,6 +93,7 @@ The checkpoint is fetched through any [ar.io gateway](https://gateways.ar.io) (`
 - **Errors are observed, never swallowed.** A failed call anchors a `*_error` event and the original error re-throws to your code unchanged.
 - **Lifecycle is explicit.** `await provenance.close()` flushes and resolves all receipts; there are no hidden process-exit hooks. Long-lived middleware can `flush()` between requests.
 - **Provenance never crashes the call.** A payload that fails to serialize is reported via `warn` and skipped — the model call still runs and returns.
+- **Bounded memory on long-lived servers.** One middleware instance batches across requests (keep it long-lived to amortize writes), and it tracks a little chain state per distinct `chainKey`. That map is a bounded LRU (`maxTrackedChains`, default 10,000) — a correlation id evicted after long inactivity simply restarts at `seq 0` if it ever returns, so per-request ids never accumulate without bound.
 - **Retention is yours.** External commitment means the receipt's `recordBytes` are the only copy of what the hash commits to. Store them — an envelope without its record proves a commitment existed, not what it said.
 - Provenance, not endorsement: a verified history says *what happened* — never "safe" or "approved".
 

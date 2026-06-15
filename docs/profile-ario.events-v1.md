@@ -1,6 +1,6 @@
 # `ario.events/v1` — profile specification
 
-> **Status: draft — under review for ratification.** Profile of the Verifiable Event Envelope family contract, [`envelope-spec.md` v1.1](https://github.com/ar-io/ar-io-proof/blob/main/specs/envelope-spec.md). This document is the authoritative profile spec referenced by the envelope-spec §4 registry row (registration PR pending per [`governance.md`](https://github.com/ar-io/ar-io-proof/blob/main/specs/governance.md) §2). Producer: the `@ar.io/anchor` SDK (this repo). Motivated by [ar-io-agent#11](https://github.com/ar-io/ar-io-agent/issues/11) (the Anchoring-SDK PRD).
+> **Status: ratified (2026-06-15).** Profile of the Verifiable Event Envelope family contract, [`envelope-spec.md` v1.3](https://github.com/ar-io/ar-io-proof/blob/main/specs/envelope-spec.md) — `ario.events/v1` is registered in the §4 registry and admitted to the accept-set in all three reference kernels (Python, TS, Go), which verify it full-family (external commitment). Producer: the `@ar.io/anchor` SDK (this repo). Motivated by [ar-io-agent#11](https://github.com/ar-io/ar-io-agent/issues/11) (the Anchoring-SDK PRD); ratified via the kernel-ratification lane.
 >
 > Per envelope-spec §4, profiles live with their producers; the family contract is the normative parent and this doc only fills in what the contract delegates to a profile. Where this doc and the family contract disagree, the family contract wins.
 

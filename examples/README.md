@@ -14,6 +14,7 @@ npm install && npm run build
 | [`03-verify-onchain.mjs`](03-verify-onchain.mjs) | Third-party verification: fetch any anchored envelope by TX ID and check it — optionally against a retained record | gateway reads only, no writes |
 | [`04-s3.mjs`](04-s3.mjs) | Anchor-as-you-store with the S3 wrapper | S3 + one Turbo write |
 | [`05-langchain.mjs`](05-langchain.mjs) | A LangChain run batched into one checkpoint, every step inclusion-proofed + offline-verified | one Turbo write |
+| [`06-vercel.mjs`](06-vercel.mjs) | A Vercel AI SDK call batched + correlation-id-chained, inclusion-proofed + offline-verified | one Turbo write |
 
 ```bash
 node examples/01-anchor.mjs

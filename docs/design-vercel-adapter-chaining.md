@@ -1,6 +1,6 @@
 # Design options — `@ar.io/anchor-vercel` event chaining
 
-> **Status: proposed — design options for coordinator review.** Pre-build design note for the Vercel AI SDK adapter ([#3](https://github.com/ar-io/ar-io-anchor/issues/3)), the documented fast-follow to `@ar.io/anchor-langchain`. Resolves the one non-mechanical decision flagged in #3 before any code is written: **what groups Vercel events into a verifiable chain**, given the seam has no run tree. Everything else in the adapter is copy-paste from the langchain package (proven). No code, no wire-format change; the `ario.events/v1` profile is unaffected. Decision owner: coordinator.
+> **Status: decided (2026-06-15) — Option C-over-B, built.** Pre-build design note for the Vercel AI SDK adapter ([#3](https://github.com/ar-io/ar-io-anchor/issues/3)), the documented fast-follow to `@ar.io/anchor-langchain`. Resolved the one non-mechanical decision: **what groups Vercel events into a verifiable chain**, given the seam has no run tree. **Owner decision: §4's recommendation — caller-supplied correlation id (`providerOptions.ario.chainKey`) with a flat per-instance session-chain fallback.** Implemented in `packages/vercel`; the §6 build-time uncertainty resolved **NO** (the pinned `ai@6.0.203` exposes no per-logical-call id to middleware — confirmed against `@ai-sdk/provider@3.0.10` types), so the recommended C-over-flat-B shipped as-is. No wire-format change; the `ario.events/v1` profile is unaffected.
 
 ## 1. Why this needs a decision (and langchain didn't)
 

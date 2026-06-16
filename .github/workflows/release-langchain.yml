@@ -5,18 +5,21 @@
 # 0.1.2; it depends on a PUBLISHED ^x.y.z of the core, not the same version,
 # so it gets its own tag namespace and its own guard.
 #
-# npmjs.com side (one-time, OWNER action — REQUIRED before the first publish
-# because @ar.io/anchor-langchain does not exist on npm yet, so a "pending
-# publisher" must be created on the org, not the package):
-#   npmjs.com → @ar.io → Add package → "Pending publisher" (GitHub Actions):
-#   organization: ar-io
-#   repository:   ar-io-anchor
-#   workflow:     release-langchain.yml      (filename must match exactly)
-#   environment:  (leave blank)
-# After the first publish the pending publisher becomes a normal trusted
-# publisher on the now-existing package.
+# FIRST PUBLISH WAS A MANUAL BOOTSTRAP (npm trusted publishing can only be
+# configured on a package that ALREADY EXISTS — there is no pre-config /
+# "pending publisher" for a brand-new package, so an OIDC tag run 404s on the
+# registry PUT until the package exists). @ar.io/anchor-langchain@0.1.0 was
+# published manually on 2026-06-16 to create the package (no npm provenance on
+# that one tarball). For OIDC releases thereafter, set the Trusted Publisher
+# on the now-existing package:
+#   npmjs.com → @ar.io/anchor-langchain → Settings → Trusted Publisher:
+#     organization: ar-io
+#     repository:   ar-io-anchor
+#     workflow:     release-langchain.yml      (filename must match exactly)
+#     environment:  (leave blank)
+# Then every langchain-v* tag (0.1.1+) publishes via OIDC WITH provenance.
 #
-# Real publish: push a `langchain-v0.1.0` tag whose version matches
+# Real publish: push a `langchain-v0.1.1` (or later) tag whose version matches
 # packages/langchain/package.json. The guard also asserts the adapter's
 # @ar.io/anchor dependency is a published `^x.y.z` range (never a
 # workspace/file/star dep that would ship a broken install).
@@ -24,8 +27,8 @@
 # Dry-run: workflow_dispatch — runs the ENTIRE path including
 # `npm publish --dry-run` (publishes nothing). Lesson carried from the v1.2.0
 # cosign failure and stated in release-anchor.yml: a dry-run that skips the
-# publish step validates nothing. Fire one after the pending publisher is set,
-# before the first real tag.
+# publish step validates nothing. Fire one after the trusted publisher is set,
+# before the first OIDC tag.
 #
 # Tag namespace: langchain-v* — does not overlap anchor-v* or any other.
 

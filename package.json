@@ -17,6 +17,7 @@
   "devDependencies": {
     "@types/node": "^20.19.41",
     "typescript": "^5.4.0",
-    "vitest": "^2.0.0"
+    "vitest": "^2.0.0",
+    "@ar.io/proof": "^0.2.0"
   }
 }

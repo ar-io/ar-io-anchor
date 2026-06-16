@@ -1,0 +1,54 @@
+{
+  "name": "@ar.io/anchor-vercel",
+  "version": "0.1.0",
+  "description": "Anchor your Vercel AI SDK calls as they run: one language-model middleware turns every generate/stream into a Merkle-batched, individually inclusion-proofed provenance record on ar.io \u2014 prompts and outputs are hashed locally and never uploaded.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "src",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@ar.io/anchor": "^0.1.2"
+  },
+  "peerDependencies": {
+    "ai": "^6.0.0"
+  },
+  "devDependencies": {
+    "ai": "^6.0.0",
+    "@ar.io/proof": "^0.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ar-io/ar-io-anchor.git",
+    "directory": "packages/vercel"
+  },
+  "homepage": "https://github.com/ar-io/ar-io-anchor/tree/main/packages/vercel",
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "ar.io",
+    "arweave",
+    "vercel",
+    "ai-sdk",
+    "ai",
+    "llm",
+    "provenance",
+    "audit-trail",
+    "anchoring"
+  ]
+}

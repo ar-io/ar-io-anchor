@@ -14,7 +14,7 @@ npm install @ar.io/anchor-vercel @ar.io/anchor ai
 import { createAnchorer } from "@ar.io/anchor";
 import { anchorMiddleware } from "@ar.io/anchor-vercel";
 import { generateText, wrapLanguageModel } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { openai } from "@ai-sdk/openai"; // your model provider — install whichever you use
 
 const provenance = anchorMiddleware(createAnchorer()); // dev mode: zero config
 

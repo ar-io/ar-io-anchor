@@ -1,0 +1,84 @@
+# Publishes @ar.io/anchor-langchain to npm via OIDC trusted publishing — the
+# same tokenless, provenance-attested flow as release-anchor.yml, but for the
+# framework adapter, which versions INDEPENDENTLY of the @ar.io/anchor +
+# @ar.io/anchor-s3 lockstep. The adapter is at 0.1.0 while the core is at
+# 0.1.2; it depends on a PUBLISHED ^x.y.z of the core, not the same version,
+# so it gets its own tag namespace and its own guard.
+#
+# npmjs.com side (one-time, OWNER action — REQUIRED before the first publish
+# because @ar.io/anchor-langchain does not exist on npm yet, so a "pending
+# publisher" must be created on the org, not the package):
+#   npmjs.com → @ar.io → Add package → "Pending publisher" (GitHub Actions):
+#   organization: ar-io
+#   repository:   ar-io-anchor
+#   workflow:     release-langchain.yml      (filename must match exactly)
+#   environment:  (leave blank)
+# After the first publish the pending publisher becomes a normal trusted
+# publisher on the now-existing package.
+#
+# Real publish: push a `langchain-v0.1.0` tag whose version matches
+# packages/langchain/package.json. The guard also asserts the adapter's
+# @ar.io/anchor dependency is a published `^x.y.z` range (never a
+# workspace/file/star dep that would ship a broken install).
+#
+# Dry-run: workflow_dispatch — runs the ENTIRE path including
+# `npm publish --dry-run` (publishes nothing). Lesson carried from the v1.2.0
+# cosign failure and stated in release-anchor.yml: a dry-run that skips the
+# publish step validates nothing. Fire one after the pending publisher is set,
+# before the first real tag.
+#
+# Tag namespace: langchain-v* — does not overlap anchor-v* or any other.
+
+name: release-langchain
+
+on:
+  push:
+    tags: ['langchain-v*.*.*']
+  workflow_dispatch: # full dry-run: build, test, pack — publishes nothing
+
+permissions:
+  contents: read
+  id-token: write # npm OIDC trusted publishing
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Pin npm to a trusted-publishing-capable version
+        # OIDC trusted publishing needs npm >= 11.5.1; Node images float their
+        # bundled npm. Floor it explicitly (same rationale as release-anchor.yml).
+        run: |
+          npm install -g npm@^11.5.1
+          npm --version
+      - name: Python cryptography (the ANS-104 cross-product validator needs it)
+        run: python3 -m pip install --user cryptography
+      - run: npm ci
+      - name: Build all workspaces (typecheck + tests resolve from built dist/)
+        run: npm run build
+      - run: npm run typecheck
+      - name: Tests — full suite incl. the langchain verifyEnvelope-green round-trip (live smoke stays gated off)
+        run: npm test
+      - name: Tag ↔ version guard (langchain, independent of the anchor lockstep)
+        if: github.event_name == 'push'
+        run: |
+          TAG="${GITHUB_REF_NAME#langchain-v}"
+          LC="$(node -p "require('./packages/langchain/package.json').version")"
+          LCDEP="$(node -p "require('./packages/langchain/package.json').dependencies['@ar.io/anchor']")"
+          fail=0
+          [ "$LC" = "$TAG" ] || { echo "::error::@ar.io/anchor-langchain version $LC != tag langchain-v$TAG"; fail=1; }
+          case "$LCDEP" in
+            ^*) ;; # published caret range on the core — good
+            *) echo "::error::packages/langchain depends on @ar.io/anchor '$LCDEP' — expected a published ^x.y.z range, not a workspace/file/star dep"; fail=1;;
+          esac
+          exit $fail
+      - name: Publish @ar.io/anchor-langchain (dry-run on dispatch)
+        working-directory: packages/langchain
+        # --provenance ON: public repo, so npm attests the build from source.
+        # On workflow_dispatch this is --dry-run (packs + validates, publishes
+        # nothing); on a langchain-v* tag push it publishes for real.
+        run: npm publish --provenance --access public ${{ github.event_name == 'workflow_dispatch' && '--dry-run' || '' }}

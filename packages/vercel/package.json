@@ -36,6 +36,7 @@
     "url": "git+https://github.com/ar-io/ar-io-anchor.git",
     "directory": "packages/vercel"
   },
+  "homepage": "https://github.com/ar-io/ar-io-anchor/tree/main/packages/vercel",
   "publishConfig": {
     "access": "public"
   },

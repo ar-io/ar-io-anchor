@@ -1,0 +1,82 @@
+# Publishes @ar.io/anchor-vercel to npm via OIDC trusted publishing — the
+# same tokenless, provenance-attested flow as release-anchor.yml /
+# release-langchain.yml, for the Vercel AI SDK adapter. It versions
+# INDEPENDENTLY (own tag namespace + own guard), depending on a PUBLISHED
+# ^x.y.z of @ar.io/anchor rather than moving in the core's lockstep.
+#
+# FIRST PUBLISH IS A MANUAL BOOTSTRAP (lesson learned from the
+# @ar.io/anchor-langchain debut, 2026-06-16): npm trusted publishing can only
+# be configured on a package that ALREADY EXISTS — there is no pre-config /
+# "pending publisher" for a brand-new package, so an OIDC tag run will 404 on
+# the registry PUT until the package exists. Sequence for the debut:
+#   1. `npm publish --access public` once, manually, from a checkout at the
+#      tag (creates @ar.io/anchor-vercel@0.1.0; no npm provenance on this one
+#      tarball — a local publish can't generate it).
+#   2. npmjs.com → @ar.io/anchor-vercel → Settings → Trusted Publisher:
+#        organization: ar-io
+#        repository:   ar-io-anchor
+#        workflow:     release-vercel.yml      (filename must match exactly)
+#        environment:  (leave blank)
+#   3. Thereafter every `vercel-v*` tag publishes via OIDC WITH provenance,
+#      starting at 0.1.1.
+#
+# Dry-run: workflow_dispatch — runs the ENTIRE path including
+# `npm publish --dry-run` (publishes nothing). Fire one after the trusted
+# publisher is set, before the first OIDC tag. (A dry-run that skips the
+# publish step validates nothing — the v1.2.0 cosign lesson.)
+#
+# Tag namespace: vercel-v* — does not overlap anchor-v* / langchain-v*.
+
+name: release-vercel
+
+on:
+  push:
+    tags: ['vercel-v*.*.*']
+  workflow_dispatch: # full dry-run: build, test, pack — publishes nothing
+
+permissions:
+  contents: read
+  id-token: write # npm OIDC trusted publishing
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Pin npm to a trusted-publishing-capable version
+        # OIDC trusted publishing needs npm >= 11.5.1; Node images float their
+        # bundled npm. Floor it explicitly (same rationale as release-anchor.yml).
+        run: |
+          npm install -g npm@^11.5.1
+          npm --version
+      - name: Python cryptography (the ANS-104 cross-product validator needs it)
+        run: python3 -m pip install --user cryptography
+      - run: npm ci
+      - name: Build all workspaces (typecheck + tests resolve from built dist/)
+        run: npm run build
+      - run: npm run typecheck
+      - name: Tests — full suite incl. the vercel verifyEnvelope-green round-trip (live smoke stays gated off)
+        run: npm test
+      - name: Tag ↔ version guard (vercel, independent of the anchor lockstep)
+        if: github.event_name == 'push'
+        run: |
+          TAG="${GITHUB_REF_NAME#vercel-v}"
+          VC="$(node -p "require('./packages/vercel/package.json').version")"
+          VCDEP="$(node -p "require('./packages/vercel/package.json').dependencies['@ar.io/anchor']")"
+          fail=0
+          [ "$VC" = "$TAG" ] || { echo "::error::@ar.io/anchor-vercel version $VC != tag vercel-v$TAG"; fail=1; }
+          case "$VCDEP" in
+            ^*) ;; # published caret range on the core — good
+            *) echo "::error::packages/vercel depends on @ar.io/anchor '$VCDEP' — expected a published ^x.y.z range, not a workspace/file/star dep"; fail=1;;
+          esac
+          exit $fail
+      - name: Publish @ar.io/anchor-vercel (dry-run on dispatch)
+        working-directory: packages/vercel
+        # --provenance ON: public repo, so npm attests the build from source.
+        # On workflow_dispatch this is --dry-run (packs + validates, publishes
+        # nothing); on a vercel-v* tag push it publishes for real.
+        run: npm publish --provenance --access public ${{ github.event_name == 'workflow_dispatch' && '--dry-run' || '' }}

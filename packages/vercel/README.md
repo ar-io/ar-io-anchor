@@ -72,18 +72,30 @@ Skipped events consume no sequence number — the committed chain stays gapless.
 
 ## Verifying a receipt
 
-Offline, with the read-only [`@ar.io/proof`](https://www.npmjs.com/package/@ar.io/proof) kernel — no ar.io service in the trust path. Three primitive checks per event:
+Offline, with the read-only [`@ar.io/proof`](https://www.npmjs.com/package/@ar.io/proof) kernel (`^0.2.0`, the full-family verifier) — no ar.io service in the trust path.
+
+```bash
+npm install @ar.io/proof
+```
 
 ```ts
-import { sha256Hex, verifyEnvelope, verifyInclusion, hexToBytes } from "@ar.io/proof";
+import { verifyEnvelope, verifyInclusion, hexToBytes } from "@ar.io/proof";
 
-const bindingOk = (await sha256Hex(r.recordBytes)) === r.envelope.payload_hash; // record → hash
-const { signatureOk } = await verifyEnvelope(r.envelope);                       // Ed25519 over the envelope
-const inclusionOk = await verifyInclusion(                                      // RFC 9162: leaf ∈ checkpoint
+// Supply the retained record bytes and the envelope verifies green end-to-end:
+// spec_version accepted + Ed25519 signature + payload binding.
+const result = await verifyEnvelope(r.envelope, { payloadBytes: r.recordBytes });
+result.ok;            // true — fully verified
+result.signatureOk;   // true
+result.payloadHashOk; // true (the committed record binds to payload_hash)
+
+// And the event's leaf is provably in its checkpoint (RFC 9162):
+const inclusionOk = await verifyInclusion(
   hexToBytes(r.leafHash), r.leafIndex, r.leafCount,
   r.auditPath.map(hexToBytes), hexToBytes(r.root),
 );
 ```
+
+**Without the record** (external commitment), `verifyEnvelope(r.envelope)` confirms the signature but reports **`payloadHashOk: null`** — *semantics-undetermined*, **not** a failure. Treat `null` as "supply the record to complete the proof," never as a pass and never as a tamper; a genuinely tampered record returns `payloadHashOk: false` with `ok: false`.
 
 The checkpoint is fetched through any [ar.io gateway](https://gateways.ar.io) (`r.gatewayUrl`) and re-verified the same way — the gateway is delivery, never trust.
 

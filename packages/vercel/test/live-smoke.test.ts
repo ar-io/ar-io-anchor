@@ -5,6 +5,7 @@
 // checkpoint upload → per-event inclusion receipts against a real TX ID.
 
 import { createAnchorer } from "@ar.io/anchor";
+import { verifyEnvelope } from "@ar.io/proof";
 import { generateText, wrapLanguageModel } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { describe, expect, it } from "vitest";
@@ -49,6 +50,12 @@ describe.skipIf(process.env.ANCHOR_LIVE_SMOKE !== "1")("live smoke (Turbo free t
     for (const r of receipts) {
       expect(r.environment).toBe("dev");
       expect(r.gatewayUrl).toContain(txId);
+      // verifyEnvelope-green against the real anchored envelope (full-family
+      // verifier, retained record supplied).
+      const result = await verifyEnvelope(r.envelope, { payloadBytes: r.recordBytes });
+      expect(result.ok).toBe(true);
+      expect(result.signatureOk).toBe(true);
+      expect(result.payloadHashOk).toBe(true);
     }
     console.log(`live checkpoint: ${receipts[0]!.gatewayUrl} (${receipts.length} events)`);
   });

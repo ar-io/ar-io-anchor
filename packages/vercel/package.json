@@ -1,7 +1,7 @@
 {
   "name": "@ar.io/anchor-vercel",
   "version": "0.1.0",
-  "description": "Anchor your Vercel AI SDK calls as they run: one language-model middleware turns every generate/stream into a Merkle-batched, individually inclusion-proofed provenance record on ar.io — prompts and outputs are hashed locally and never uploaded.",
+  "description": "Anchor your Vercel AI SDK calls as they run: one language-model middleware turns every generate/stream into a Merkle-batched, individually inclusion-proofed provenance record on ar.io \u2014 prompts and outputs are hashed locally and never uploaded.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -28,7 +28,8 @@
     "ai": "^6.0.0"
   },
   "devDependencies": {
-    "ai": "^6.0.0"
+    "ai": "^6.0.0",
+    "@ar.io/proof": "^0.2.0"
   },
   "repository": {
     "type": "git",

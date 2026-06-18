@@ -20,7 +20,7 @@ node examples/01-anchor.mjs   # runnable examples; 01/02/04 each make one free-t
 
 ## Binding contracts
 
-- **Family contract:** [`envelope-spec.md`](https://github.com/ar-io/ar-io-proof/blob/main/specs/envelope-spec.md) v1.1+ in `ar-io-proof`. This repo's profile is `ario.events/v1` (registered §4, v1.2): **Minimal disclosure + external commitment + `environment` REQUIRED**. The authoritative profile spec is [`docs/profile-ario.events-v1.md`](docs/profile-ario.events-v1.md) — change wire behavior only in lockstep with it.
+- **Family contract:** [`envelope-spec.md`](https://github.com/ar-io/ar-io-proof/blob/main/specs/envelope-spec.md) v1.3 in `ar-io-proof`. This repo's profile is `ario.events/v1` (registered §4 at v1.2, **ratified** at v1.3 — admitted to the accept-set in all three kernels): **Minimal disclosure + external commitment + `environment` REQUIRED**. The authoritative profile spec is [`docs/profile-ario.events-v1.md`](docs/profile-ario.events-v1.md) — change wire behavior only in lockstep with it.
 - **Corpus pin:** `test-vectors-v1.1`, vendored at `packages/anchor/test-vectors/` — generated in `ar-io-proof`, never hand-edited here. Re-pin discipline: [`VENDORING.md`](packages/anchor/test-vectors/VENDORING.md). `conformance.test.ts` must reproduce every vector byte-for-byte.
 - **Governance:** corpus changes and profile-spec changes go through `ar-io-proof` PRs (BDFL merges). Never tag a corpus version yourself. **No npm publish without coordinator green light.**
 

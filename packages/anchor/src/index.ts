@@ -23,6 +23,22 @@ export type {
   BatchOptions,
   InclusionReceipt,
 } from "./batch.js";
+export {
+  ANCHOR_TRACE_BODY_TYPE,
+  EVIDENCE_SIGNATURE_ALG,
+  EVIDENCE_SPEC_VERSION,
+  toEvidenceBundle,
+} from "./evidence.js";
+export type {
+  AnchorTraceBody,
+  EvidenceBundle,
+  EvidenceIssuer,
+  EvidenceVerdict,
+  ToEvidenceBundleOptions,
+  TraceCheckpointBody,
+  TraceEventBody,
+  TraceInclusionBody,
+} from "./evidence.js";
 export { buildEventRecord, isValidEventType } from "./record.js";
 export { buildEnvelope } from "./envelope.js";
 export { LocalEd25519Signer } from "./signer.js";

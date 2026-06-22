@@ -147,6 +147,68 @@ describe("toEvidenceBundle — round trip with the shipping kernel", () => {
   });
 });
 
+describe("ario.bundle() — zero-ceremony convenience on the anchorer", () => {
+  it("signs the wrapper with the anchorer's OWN signer and verifies green (zero-arg)", async () => {
+    // Dev mode auto-generates the signer — the call site never sees it.
+    const ario = createAnchorer({ uploader: new StubUploader(), warn: () => {} });
+    const batch = ario.batch({ maxEvents: 3 });
+    const receipts = await Promise.all(
+      Array.from({ length: 3 }, (_, i) => batch.add({ data: `event-${i}` }).receipt()),
+    );
+
+    // Zero signer handling — no second key to hand-create and pass around.
+    const bundle = await ario.bundle(receipts);
+
+    // The wrapper key is the anchorer's OWN key — the SAME key that signed the
+    // events. Reading it from the anchorer (not from a held signer) proves it.
+    expect(bundle.public_key).toBe(await ario.publicKey());
+    expect(bundle.body.events[0]!.envelope.public_key).toBe(await ario.publicKey());
+    // The sensible default issuer.
+    expect(bundle.issuer).toEqual({ kind: "producer" });
+    expect(bundle.body.checkpoints).toHaveLength(1);
+    expect(bundle.body.events).toHaveLength(3);
+
+    // Round-trips green through the shipping @ar.io/proof verify path.
+    const v = await verifyBundleWithKernel(bundle);
+    expect(v.specOk).toBe(true);
+    expect(v.signatureOk).toBe(true);
+    expect(v.bodyHashOk).toBe(true);
+    expect(v.checkpointsOk).toBe(true);
+    expect(v.eventsOk).toBe(true);
+    expect(v.eventBindings).toEqual([true, true, true]);
+  });
+
+  it("carries the configured subject's producer_id into the default issuer", async () => {
+    const ario = createAnchorer({
+      uploader: new StubUploader(),
+      warn: () => {},
+      subject: { type: "producer", producer_id: "acme-app" },
+    });
+    const batch = ario.batch({ maxEvents: 1 });
+    const receipts = [await batch.add({ data: "one" }).receipt()];
+
+    const bundle = await ario.bundle(receipts);
+    expect(bundle.issuer).toEqual({ kind: "producer", producer_id: "acme-app" });
+  });
+
+  it("lets the caller override issuer and gateway", async () => {
+    const ario = createAnchorer({ uploader: new StubUploader(), warn: () => {} });
+    const batch = ario.batch({ maxEvents: 1 });
+    const receipts = [await batch.add({ data: "one" }).receipt()];
+
+    const bundle = await ario.bundle(receipts, {
+      issuer: { kind: "producer", producer_id: "override" },
+      gateway: "https://example.gateway",
+    });
+    expect(bundle.issuer).toEqual({ kind: "producer", producer_id: "override" });
+    expect(bundle.gateway).toBe("https://example.gateway");
+    // Still verifies green — override touches only the wrapper, not the body.
+    const v = await verifyBundleWithKernel(bundle);
+    expect(v.signatureOk).toBe(true);
+    expect(v.eventsOk).toBe(true);
+  });
+});
+
 describe("toEvidenceBundle — tamper is caught downstream", () => {
   it("flipping one byte of a record_bytes makes THAT event fail to bind", async () => {
     const { signer, receipts } = await anchorBatch(3);

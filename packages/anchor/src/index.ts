@@ -14,6 +14,7 @@ export type {
   Anchorer,
   AnchorerOptions,
   ApiGuardConfig,
+  BundleOptions,
 } from "./anchorer.js";
 export { Batcher } from "./batch.js";
 export type {

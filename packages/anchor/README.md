@@ -51,18 +51,15 @@ await ario.close(); // explicit flush — call it on shutdown; nothing is flushe
 
 ## Bundle a whole trace (one portable file)
 
-Collect a set of receipts and serialize them into ONE signed, self-verifying `ario.evidence/v1` bundle (`body_type: ario.anchor.trace/v1`) with `toEvidenceBundle`. The wrapper is signed by your anchorer's own key; the bundle carries every event's signed envelope + committed record + inclusion proof, de-duplicating the shared checkpoint(s).
+Collect a set of receipts and serialize them into ONE signed, self-verifying `ario.evidence/v1` bundle (`body_type: ario.anchor.trace/v1`) with `ario.bundle()`. The wrapper is signed by your anchorer's own key — the same key the receipts' envelopes carry, so the call site needs zero signer handling; the bundle carries every event's signed envelope + committed record + inclusion proof, de-duplicating the shared checkpoint(s).
 
 ```ts
-import { toEvidenceBundle } from "@ar.io/anchor";
-
 const receipts = await Promise.all(handles.map((h) => h.receipt()));
-const bundle = await toEvidenceBundle(receipts, {
-  signer,                                       // your anchorer's signer
-  issuer: { kind: "producer", producer_id: "my-app" },
-});
+const bundle = await ario.bundle(receipts); // signed with the anchorer's own key — zero ceremony
 await fs.writeFile("trace-bundle.json", JSON.stringify(bundle, null, 2));
 ```
+
+Need an explicit key, or to override the issuer/gateway? The standalone advanced form is `toEvidenceBundle(receipts, { signer, issuer })` (also from `@ar.io/anchor`) — `ario.bundle()` is the same call wired to your anchorer's own signer with a sensible default issuer.
 
 ## Verifying
 
@@ -76,7 +73,7 @@ npx @ar.io/proof verify trace-bundle.json https://arweave.net,https://permagate.
 
 It prints a per-event + rollup verdict and exits on a pinned code (`0` verified · `1` failed · `2` malformed · `3` gateway-unavailable); the producer's asserted verdict is shown but never trusted (the verdict is recomputed from the body). A **withheld** record surfaces as semantics-undetermined (`~`), not a failure. The same CLI also verifies the agent's `ario.agent.proof/v1` inclusion bundles (it sniffs `spec_version`).
 
-> `toEvidenceBundle` + the `npx @ar.io/proof verify` CLI are implemented on `main`; they go live once `@ar.io/anchor` and `@ar.io/proof` publish their next versions. Until then, verify by hand with the `@ar.io/proof` primitives below.
+> `ario.bundle()` / `toEvidenceBundle` + the `npx @ar.io/proof verify` CLI are implemented on `main`; they go live once `@ar.io/anchor` and `@ar.io/proof` publish their next versions. Until then, verify by hand with the `@ar.io/proof` primitives below.
 
 A single envelope still verifies by hand from any ar.io gateway (`https://<gateway>/raw/<txId>`, e.g. `turbo-gateway.com`) with your retained `recordBytes`:
 

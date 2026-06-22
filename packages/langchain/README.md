@@ -73,13 +73,8 @@ Skipped events consume no sequence number — the committed chain stays gapless.
 Collect the receipts, serialize them into ONE signed, portable `trace-bundle.json`, and hand it to an auditor — they verify the whole thing (every event's signature + payload binding + Merkle inclusion, offline) with **one command** and the read-only [`@ar.io/proof`](https://www.npmjs.com/package/@ar.io/proof) (no write SDK in the trust path):
 
 ```ts
-import { toEvidenceBundle } from "@ar.io/anchor";
-
-const receipts = await Promise.all(handles.map((h) => h.receipt()));
-const bundle = await toEvidenceBundle(receipts, {
-  signer,                                       // your anchorer's signer
-  issuer: { kind: "producer", producer_id: "my-app" },
-});
+const receipts = await provenance.close();
+const bundle = await ario.bundle(receipts); // signed with the anchorer's own key — zero ceremony
 await fs.writeFile("trace-bundle.json", JSON.stringify(bundle, null, 2));
 ```
 
@@ -89,9 +84,11 @@ npx @ar.io/proof verify trace-bundle.json
 npx @ar.io/proof verify trace-bundle.json https://arweave.net,https://permagate.io
 ```
 
+The whole story is five steps: anchor → `await provenance.close()` → `await ario.bundle(receipts)` → write `trace-bundle.json` → `npx @ar.io/proof verify trace-bundle.json`. Need an explicit key or to override the issuer/gateway? The advanced form is `toEvidenceBundle(receipts, { signer, issuer })` from `@ar.io/anchor`.
+
 It prints a per-event + rollup verdict and exits on a pinned code (`0` verified · `1` failed · `2` malformed · `3` gateway-unavailable); the producer's asserted verdict is shown but never trusted (the verdict is recomputed from the body). A **withheld** record surfaces as semantics-undetermined (`~`), not a failure.
 
-> The `toEvidenceBundle` emit + `npx @ar.io/proof verify` CLI are implemented on `main`; they go live once `@ar.io/anchor` and `@ar.io/proof` publish their next versions. Until then, verify by hand with the `@ar.io/proof` primitives shown below.
+> `ario.bundle()` / `toEvidenceBundle` emit + the `npx @ar.io/proof verify` CLI are implemented on `main`; they go live once `@ar.io/anchor` and `@ar.io/proof` publish their next versions. Until then, verify by hand with the `@ar.io/proof` primitives shown below.
 
 A single receipt also verifies by hand against the read-only kernel (`@ar.io/proof` `^0.2.0`, the full-family verifier):
 

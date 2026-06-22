@@ -1,6 +1,6 @@
 {
   "name": "@ar.io/anchor",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Anchor-at-write-time for the ar.io verification stack. Hash your data locally, sign a Verifiable Event Envelope (ario.events/v1), and anchor it to ar.io \u2014 permanent, tamper-evident provenance with Merkle-batched checkpoints and per-event inclusion proofs. Raw bytes never leave your system. Verify with @ar.io/proof.",
   "license": "MIT",
   "type": "module",

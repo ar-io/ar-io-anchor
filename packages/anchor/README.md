@@ -49,19 +49,44 @@ await ario.close(); // explicit flush — call it on shutdown; nothing is flushe
 
 `add()` is synchronous (bytes/string/pre-computed hash — no streams here). A batch of one is valid. With the default in-memory buffer a crash loses buffered *proofs*, never data — every event is re-anchorable from your system.
 
-## Verifying
+## Bundle a whole trace (one portable file)
 
-Fetch the envelope by `txId` from any ar.io gateway — `https://<gateway>/raw/<txId>` (e.g. `turbo-gateway.com`; browse the network at [gateways.ar.io](https://gateways.ar.io)). With that envelope and your retained `recordBytes`, anyone verifies offline with the read-only [`@ar.io/proof`](https://www.npmjs.com/package/@ar.io/proof):
+Collect a set of receipts and serialize them into ONE signed, self-verifying `ario.evidence/v1` bundle (`body_type: ario.anchor.trace/v1`) with `toEvidenceBundle`. The wrapper is signed by your anchorer's own key; the bundle carries every event's signed envelope + committed record + inclusion proof, de-duplicating the shared checkpoint(s).
 
 ```ts
-import { ed25519Verify, jcs, sha256Hex, utf8 } from "@ar.io/proof";
+import { toEvidenceBundle } from "@ar.io/anchor";
+
+const receipts = await Promise.all(handles.map((h) => h.receipt()));
+const bundle = await toEvidenceBundle(receipts, {
+  signer,                                       // your anchorer's signer
+  issuer: { kind: "producer", producer_id: "my-app" },
+});
+await fs.writeFile("trace-bundle.json", JSON.stringify(bundle, null, 2));
+```
+
+## Verifying
+
+Hand the trace bundle to an auditor; they verify the whole thing — every event's signature + payload binding + Merkle inclusion, offline — with **one command** and the read-only [`@ar.io/proof`](https://www.npmjs.com/package/@ar.io/proof) (no write SDK in the trust path):
+
+```bash
+npx @ar.io/proof verify trace-bundle.json
+# optionally re-fetch each checkpoint on-chain to confirm it's anchored:
+npx @ar.io/proof verify trace-bundle.json https://arweave.net,https://permagate.io
+```
+
+It prints a per-event + rollup verdict and exits on a pinned code (`0` verified · `1` failed · `2` malformed · `3` gateway-unavailable); the producer's asserted verdict is shown but never trusted (the verdict is recomputed from the body).
+
+A single envelope still verifies by hand from any ar.io gateway (`https://<gateway>/raw/<txId>`, e.g. `turbo-gateway.com`) with your retained `recordBytes`:
+
+```ts
+import { ed25519Verify, jcs, sha256Hex, utf8, verifyInclusion, hexToBytes } from "@ar.io/proof";
 
 const { signature, ...preSignature } = receipt.envelope;
 await ed25519Verify(signature, utf8(jcs(preSignature)), receipt.envelope.public_key); // true
 (await sha256Hex(receipt.recordBytes)) === receipt.envelope.payload_hash;             // true
 ```
 
-Batched events verify their inclusion the same way — see the runnable [examples](https://github.com/ar-io/ar-io-anchor/tree/main/examples).
+See the runnable [examples](https://github.com/ar-io/ar-io-anchor/tree/main/examples).
 
 ## Production
 

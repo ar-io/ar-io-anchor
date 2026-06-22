@@ -6,15 +6,12 @@
 // Makes one real free-tier Turbo write (dev mode), like examples 01/02/04.
 import { writeFile } from "node:fs/promises";
 
-import { createAnchorer, LocalEd25519Signer, toEvidenceBundle } from "@ar.io/anchor";
+import { createAnchorer } from "@ar.io/anchor";
 import { FakeListChatModel } from "@langchain/core/utils/testing";
 
 import { anchorCallbacks } from "@ar.io/anchor-langchain";
 
-// Hold the signer so we can serialize a trace bundle below; dev mode otherwise
-// auto-generates one. (The bundle wrapper is signed with this same key.)
-const signer = LocalEd25519Signer.generate();
-const ario = createAnchorer({ signer }); // dev mode: Turbo free tier, our signer
+const ario = createAnchorer(); // dev mode: zero config — auto identity + wallet
 const provenance = anchorCallbacks(ario, {
   batch: { maxEvents: 16, maxAge: 30_000, name: "example-05" },
 });
@@ -27,11 +24,9 @@ const receipts = await provenance.close();
 console.log(`${receipts.length} events → 1 checkpoint: ${receipts[0].gatewayUrl}\n`);
 
 // Serialize the whole session into ONE signed, portable, self-verifying bundle.
+// ario.bundle() signs the wrapper with the anchorer's own key — zero ceremony.
 // An auditor verifies it offline with one command — no write SDK required.
-const bundle = await toEvidenceBundle(receipts, {
-  signer,
-  issuer: { kind: "producer", producer_id: "example-05" },
-});
+const bundle = await ario.bundle(receipts);
 await writeFile("trace-bundle.json", JSON.stringify(bundle, null, 2));
 
 console.log("wrote trace-bundle.json — verify it yourself with the read-only kernel:\n");

@@ -8,11 +8,16 @@
 import { bytesToHex } from "@ar.io/proof";
 import { sha256 } from "@noble/hashes/sha2";
 
-import { Batcher, type Batch, type BatchOptions, type BatcherContext } from "./batch.js";
+import { Batcher, type Batch, type BatchOptions, type BatcherContext, type InclusionReceipt } from "./batch.js";
 import { buildSignedDataItem, SolanaWalletSigner, txIdFromDataItem } from "./dataitem.js";
 import type { DataItemSigner } from "./dataitem.js";
 import { buildEnvelope } from "./envelope.js";
 import { ProductionConfigError, TxIdMismatchError } from "./errors.js";
+import {
+  toEvidenceBundle,
+  type EvidenceBundle,
+  type EvidenceIssuer,
+} from "./evidence.js";
 import { buildEventRecord } from "./record.js";
 import { LocalEd25519Signer } from "./signer.js";
 import { MemoryStore, type Store } from "./store.js";
@@ -77,10 +82,26 @@ export interface AnchorReceipt {
   gatewayUrl: string;
 }
 
+// Override the defaults bundle() applies for you. Everything is optional —
+// the zero-arg call is the intended path.
+export interface BundleOptions {
+  // Identity context on the wrapper. Defaults to { kind: "producer" } (plus
+  // the subject's producer_id when this anchorer was configured with one).
+  issuer?: EvidenceIssuer;
+  // The named delivery surface. Defaults to the receipts' gateway.
+  gateway?: string | null;
+}
+
 export interface Anchorer {
   readonly environment: Environment;
   anchor(input: AnchorInput): Promise<AnchorReceipt>;
   batch(options: BatchOptions): Batch;
+  // Serialize a set of inclusion receipts into ONE signed, portable
+  // ario.evidence/v1 / ario.anchor.trace/v1 bundle — signed with THIS
+  // anchorer's own key (the same key the receipts' envelopes carry), so the
+  // call site needs zero signer handling. The explicit/advanced form is the
+  // standalone toEvidenceBundle(receipts, { signer, ... }).
+  bundle(receipts: InclusionReceipt[], options?: BundleOptions): Promise<EvidenceBundle>;
   publicKey(): Promise<string>;
   close(): Promise<void>;
 }
@@ -208,10 +229,27 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
     return b;
   }
 
+  async function bundle(
+    receipts: InclusionReceipt[],
+    bundleOptions: BundleOptions = {},
+  ): Promise<EvidenceBundle> {
+    // Sign the wrapper with the anchorer's OWN signer (caller-supplied or
+    // auto-generated in dev mode) — the same key the receipts' envelopes are
+    // signed with. Default issuer derives from the anchorer's subject (a bare
+    // { kind: "producer" }, plus producer_id when configured); the caller may
+    // override issuer/gateway.
+    return toEvidenceBundle(receipts, {
+      signer,
+      issuer: bundleOptions.issuer ?? defaultIssuer(subject),
+      ...(bundleOptions.gateway !== undefined ? { gateway: bundleOptions.gateway } : {}),
+    });
+  }
+
   return {
     environment,
     anchor,
     batch,
+    bundle,
     publicKey: async () => bytesToHex(await signer.publicKey()),
     close: async () => {
       // Flush every batch this anchorer minted. Adapters call this
@@ -219,6 +257,15 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
       await Promise.all(batches.map((b) => b.close()));
     },
   };
+}
+
+// The wrapper's default issuer mirrors evidence.ts's issuerFromSubject: a bare
+// { kind: "producer" }, carrying the configured producer_id when present. Kept
+// minimal — the load-bearing identity is always the wrapper's public_key.
+function defaultIssuer(subject: EventsSubject): EvidenceIssuer {
+  const issuer: EvidenceIssuer = { kind: "producer" };
+  if (subject.producer_id !== undefined) issuer.producer_id = subject.producer_id;
+  return issuer;
 }
 
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/;

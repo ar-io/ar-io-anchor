@@ -4,14 +4,18 @@
 // in any real model (openai("gpt-4o"), etc.); the middleware doesn't change.
 //
 // Makes one real free-tier Turbo write (dev mode), like examples 01/02/04/05.
-import { createAnchorer } from "@ar.io/anchor";
-import { hexToBytes, verifyEnvelope, verifyInclusion } from "@ar.io/proof";
+import { writeFile } from "node:fs/promises";
+
+import { createAnchorer, LocalEd25519Signer, toEvidenceBundle } from "@ar.io/anchor";
 import { generateText, wrapLanguageModel } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 
 import { anchorMiddleware } from "@ar.io/anchor-vercel";
 
-const ario = createAnchorer(); // dev mode: zero config, Turbo free tier
+// Hold the signer so we can serialize a trace bundle below; dev mode otherwise
+// auto-generates one. (The bundle wrapper is signed with this same key.)
+const signer = LocalEd25519Signer.generate();
+const ario = createAnchorer({ signer }); // dev mode: Turbo free tier, our signer
 const provenance = anchorMiddleware(ario, {
   batch: { maxEvents: 16, maxAge: 30_000, name: "example-06" },
 });
@@ -39,21 +43,16 @@ console.log("model said:", text, "\n");
 const receipts = await provenance.close();
 console.log(`${receipts.length} events → 1 checkpoint: ${receipts[0].gatewayUrl}\n`);
 
-for (const r of receipts) {
-  const m = JSON.parse(new TextDecoder().decode(r.recordBytes)).metadata.vercel_ai;
-  // Full-family verify (@ar.io/proof 0.2.0): supplying the retained record
-  // bytes gives the green end-to-end result — spec + signature + binding.
-  const result = await verifyEnvelope(r.envelope, { payloadBytes: r.recordBytes });
-  const inclusionOk = await verifyInclusion(
-    hexToBytes(r.leafHash),
-    r.leafIndex,
-    r.leafCount,
-    r.auditPath.map(hexToBytes),
-    hexToBytes(r.root),
-  );
-  console.log(
-    `leaf ${r.leafIndex}/${r.leafCount}  chain ${m.chain_key}  seq ${m.seq}`,
-    `verified=${result.ok} signature=${result.signatureOk} binding=${result.payloadHashOk} inclusion=${inclusionOk}`,
-  );
-}
-console.log("\nRetain each receipt's recordBytes — that is what the hash commits to.");
+// Serialize the whole trace into ONE signed, portable, self-verifying bundle.
+// An auditor verifies it offline with one command — no write SDK required.
+const bundle = await toEvidenceBundle(receipts, {
+  signer,
+  issuer: { kind: "producer", producer_id: "example-06" },
+});
+await writeFile("trace-bundle.json", JSON.stringify(bundle, null, 2));
+
+console.log("wrote trace-bundle.json — verify it yourself with the read-only kernel:\n");
+console.log("  npx @ar.io/proof verify trace-bundle.json");
+console.log("  # also confirm each checkpoint is anchored on-chain:");
+console.log("  npx @ar.io/proof verify trace-bundle.json https://arweave.net,https://permagate.io\n");
+console.log("(implemented on main; live once @ar.io/anchor and @ar.io/proof publish their next versions)");

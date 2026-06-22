@@ -74,7 +74,9 @@ npx @ar.io/proof verify trace-bundle.json
 npx @ar.io/proof verify trace-bundle.json https://arweave.net,https://permagate.io
 ```
 
-It prints a per-event + rollup verdict and exits on a pinned code (`0` verified · `1` failed · `2` malformed · `3` gateway-unavailable); the producer's asserted verdict is shown but never trusted (the verdict is recomputed from the body).
+It prints a per-event + rollup verdict and exits on a pinned code (`0` verified · `1` failed · `2` malformed · `3` gateway-unavailable); the producer's asserted verdict is shown but never trusted (the verdict is recomputed from the body). A **withheld** record surfaces as semantics-undetermined (`~`), not a failure. The same CLI also verifies the agent's `ario.agent.proof/v1` inclusion bundles (it sniffs `spec_version`).
+
+> `toEvidenceBundle` + the `npx @ar.io/proof verify` CLI are implemented on `main`; they go live once `@ar.io/anchor` and `@ar.io/proof` publish their next versions. Until then, verify by hand with the `@ar.io/proof` primitives below.
 
 A single envelope still verifies by hand from any ar.io gateway (`https://<gateway>/raw/<txId>`, e.g. `turbo-gateway.com`) with your retained `recordBytes`:
 

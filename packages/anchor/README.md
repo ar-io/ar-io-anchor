@@ -61,6 +61,18 @@ await fs.writeFile("trace-bundle.json", JSON.stringify(bundle, null, 2));
 
 Need an explicit key, or to override the issuer/gateway? The standalone advanced form is `toEvidenceBundle(receipts, { signer, issuer })` (also from `@ar.io/anchor`) — `ario.bundle()` is the same call wired to your anchorer's own signer with a sensible default issuer.
 
+### Optionally include the raw logs (opt-in, default off)
+
+By default a bundle discloses **nothing semantic** — it carries hashes and on-chain locations, never your raw bytes, and that's the whole point of minimal disclosure. Sometimes, though, you *want* one self-contained file an auditor can open and read: the raw logs **and** their on-chain proofs together. Pass `disclose`, keyed by `eventId`, with the original bytes (the receipt never retained them, so you supply them back):
+
+```ts
+const bundle = await ario.bundle(receipts, {
+  disclose: { [receipts[0].eventId]: rawLogBytes }, // Uint8Array | string (UTF-8)
+});
+```
+
+Each disclosed event embeds its bytes (lowercase hex) **inside the signed body**, so the disclosure is covered by `body_hash` and tamper-evident like everything else; `sha256(bytes)` is asserted equal to the event's committed `content_hash` at assembly time, and a mismatch throws. This is purely a property of the **file you hand out** — your **on-chain footprint is unchanged** (the envelope still carries only the hash), and events you don't list stay minimal. Disclose all, some, or none, per event.
+
 ## Verifying
 
 Hand the trace bundle to an auditor; they verify the whole thing — every event's signature + payload binding + Merkle inclusion, offline — with **one command** and the read-only [`@ar.io/proof`](https://www.npmjs.com/package/@ar.io/proof) (no write SDK in the trust path):

@@ -90,6 +90,10 @@ export interface BundleOptions {
   issuer?: EvidenceIssuer;
   // The named delivery surface. Defaults to the receipts' gateway.
   gateway?: string | null;
+  // Opt-in raw-byte disclosure, keyed by eventId — embeds each event's raw
+  // bytes inside the signed body so the bundle is one self-contained, verify-
+  // anywhere file. Default off; see toEvidenceBundle's ToEvidenceBundleOptions.
+  disclose?: Record<string, Uint8Array | string>;
 }
 
 export interface Anchorer {
@@ -242,6 +246,7 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
       signer,
       issuer: bundleOptions.issuer ?? defaultIssuer(subject),
       ...(bundleOptions.gateway !== undefined ? { gateway: bundleOptions.gateway } : {}),
+      ...(bundleOptions.disclose !== undefined ? { disclose: bundleOptions.disclose } : {}),
     });
   }
 

@@ -272,6 +272,112 @@ describe("toEvidenceBundle — input validation", () => {
   });
 });
 
+describe("toEvidenceBundle — opt-in content disclosure", () => {
+  it("default (no disclose) emits no content key on any event", async () => {
+    const { signer, receipts } = await anchorBatch(3);
+    const bundle = await toEvidenceBundle(receipts, { signer });
+    for (const ev of bundle.body.events) {
+      expect("content" in ev).toBe(false);
+    }
+  });
+
+  it("discloses one event's raw bytes as hex inside the signed body; others carry no content", async () => {
+    const { signer, receipts } = await anchorBatch(3);
+    const target = receipts[0]!; // anchored with data "event-0"
+    const raw = utf8("event-0");
+    const bundle = await toEvidenceBundle(receipts, {
+      signer,
+      generatedAt: "2026-06-22T00:00:00.000Z",
+      disclose: { [target.eventId]: raw },
+    });
+
+    const disclosed = bundle.body.events.find((e) => e.envelope.event_id === target.eventId)!;
+    expect(disclosed.content).toBe(bytesToHex(raw));
+    // The embedded bytes hash to the record's committed content_hash.
+    const rec = JSON.parse(new TextDecoder().decode(hexBytes(disclosed.record_bytes!))) as {
+      event: { content_hash: string };
+    };
+    expect(rec.event.content_hash).toBe(await sha256Hex(raw));
+    // Undisclosed events keep today's shape — no content key.
+    for (const ev of bundle.body.events) {
+      if (ev.envelope.event_id !== target.eventId) expect("content" in ev).toBe(false);
+    }
+    // The content-bearing bundle still verifies fully green under the shipping kernel.
+    const v = await verifyBundleWithKernel(bundle);
+    expect(v.signatureOk).toBe(true);
+    expect(v.bodyHashOk).toBe(true);
+    expect(v.checkpointsOk).toBe(true);
+    expect(v.eventsOk).toBe(true);
+    expect(v.eventBindings).toEqual([true, true, true]);
+  });
+
+  it("accepts a string disclosure value, UTF-8 encoded", async () => {
+    const { signer, receipts } = await anchorBatch(1); // data "event-0"
+    const bundle = await toEvidenceBundle(receipts, {
+      signer,
+      disclose: { [receipts[0]!.eventId]: "event-0" },
+    });
+    expect(bundle.body.events[0]!.content).toBe(bytesToHex(utf8("event-0")));
+    const v = await verifyBundleWithKernel(bundle);
+    expect(v.signatureOk).toBe(true);
+    expect(v.eventsOk).toBe(true);
+  });
+
+  it("disclosure rides body_hash — same receipts, disclosure changes the signed body", async () => {
+    const { signer, receipts } = await anchorBatch(2);
+    const at = "2026-06-22T00:00:00.000Z";
+    const plain = await toEvidenceBundle(receipts, { signer, generatedAt: at });
+    const disclosed = await toEvidenceBundle(receipts, {
+      signer,
+      generatedAt: at,
+      disclose: { [receipts[0]!.eventId]: "event-0" },
+    });
+    // Embedding content into the body changes body_hash AND the wrapper signature
+    // — i.e. the disclosure is genuinely covered by the tamper-evident envelope.
+    expect(disclosed.body_hash).not.toBe(plain.body_hash);
+    expect(disclosed.signature).not.toBe(plain.signature);
+    expect((await verifyBundleWithKernel(plain)).bodyHashOk).toBe(true);
+    expect((await verifyBundleWithKernel(disclosed)).bodyHashOk).toBe(true);
+  });
+
+  it("throws when disclosed bytes do not match the committed content_hash", async () => {
+    const { signer, receipts } = await anchorBatch(2);
+    await expect(
+      toEvidenceBundle(receipts, {
+        signer,
+        disclose: { [receipts[0]!.eventId]: "not-the-original-bytes" },
+      }),
+    ).rejects.toThrow(/does not match committed content_hash/);
+  });
+
+  it("throws when disclosing an event whose record has no content_hash", async () => {
+    const { signer, receipts } = await anchorBatch(1);
+    const noContent: InclusionReceipt = {
+      ...receipts[0]!,
+      recordBytes: new TextEncoder().encode(JSON.stringify({ event: {} })),
+    };
+    await expect(
+      toEvidenceBundle([noContent], { signer, disclose: { [noContent.eventId]: "x" } }),
+    ).rejects.toThrow(/no event\.content_hash/);
+  });
+
+  it("anchorer.bundle threads disclose through to the signed body", async () => {
+    const ario = createAnchorer({ uploader: new StubUploader(), warn: () => {} });
+    const batch = ario.batch({ maxEvents: 2 });
+    const handles = [batch.add({ data: "alpha" }), batch.add({ data: "beta" })];
+    const receipts = await Promise.all(handles.map((h) => h.receipt()));
+
+    const bundle = await ario.bundle(receipts, {
+      disclose: { [receipts[0]!.eventId]: "alpha" },
+    });
+    const ev = bundle.body.events.find((e) => e.envelope.event_id === receipts[0]!.eventId)!;
+    expect(ev.content).toBe(bytesToHex(utf8("alpha")));
+    const v = await verifyBundleWithKernel(bundle);
+    expect(v.signatureOk).toBe(true);
+    expect(v.eventsOk).toBe(true);
+  });
+});
+
 // Mirror the producer's wrapper signing so a test can isolate body edits.
 async function reSign(bundle: EvidenceBundle, signer: LocalEd25519Signer): Promise<void> {
   bundle.body_hash = await sha256Hex(utf8(jcs(bundle.body)));

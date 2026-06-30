@@ -7,7 +7,7 @@
 // only the Turbo POST is stubbed.
 
 import { createAnchorer, txIdFromDataItem } from "@ar.io/anchor";
-import { hexToBytes, verifyEnvelope, verifyInclusion } from "@ar.io/proof";
+import { bytesToHex, hexToBytes, sha256Hex, utf8, verifyEnvelope, verifyInclusion } from "@ar.io/proof";
 import { describe, expect, it } from "vitest";
 
 import { anchorMiddleware } from "../src/index";
@@ -82,5 +82,55 @@ describe("verifyEnvelope-green round-trip (@ar.io/proof 0.2.0 full-family)", () 
     expect(result.signatureOk).toBe(true); // signature still valid over the envelope
     expect(result.payloadHashOk).toBe(false); // but the bytes don't bind
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("opt-in content disclosure through the adapter (@ar.io/anchor 0.2.0)", () => {
+  it("a disclosed call embeds its raw bytes in the signed bundle, hash-bound", async () => {
+    const anchorer = createAnchorer({ uploader: stubUploader(), warn: () => {} });
+    // Commit exactly ONE event with a payload we control, so we know the exact
+    // bytes the adapter hashed (it anchors `data = JSON.stringify(mapPayload return)`).
+    const known = { event: "generate_start", prompt: "what is provenance?" };
+    let committedOne = false;
+    const mw = anchorMiddleware(anchorer, {
+      mapPayload: () => {
+        if (committedOne) return null;
+        committedOne = true;
+        return known;
+      },
+    });
+    await mw.wrapGenerate({
+      doGenerate: async () => ({ content: [], usage: {}, finishReason: "stop" }) as never,
+      params: { prompt: "what is provenance?", providerOptions: { ario: { chainKey: "req-1" } } },
+    } as never);
+    const receipts = await mw.close();
+    expect(receipts.length).toBe(1);
+
+    const rawBytes = utf8(JSON.stringify(known));
+    const bundle = await anchorer.bundle(receipts, {
+      disclose: { [receipts[0]!.eventId]: rawBytes },
+    });
+
+    const ev = bundle.body.events[0]!;
+    expect(ev.content).toBe(bytesToHex(rawBytes));
+    const record = JSON.parse(new TextDecoder().decode(hexToBytes(ev.record_bytes!))) as {
+      event: { content_hash: string };
+    };
+    expect(await sha256Hex(rawBytes)).toBe(record.event.content_hash);
+  });
+
+  it("disclosing bytes that do not match the committed hash throws at assembly", async () => {
+    const anchorer = createAnchorer({ uploader: stubUploader(), warn: () => {} });
+    const mw = anchorMiddleware(anchorer);
+    await mw.wrapGenerate({
+      doGenerate: async () => ({ content: [], usage: {}, finishReason: "stop" }) as never,
+      params: { prompt: "x", providerOptions: { ario: { chainKey: "req-2" } } },
+    } as never);
+    const receipts = await mw.close();
+    await expect(
+      anchorer.bundle(receipts, {
+        disclose: { [receipts[0]!.eventId]: utf8("not what was anchored") },
+      }),
+    ).rejects.toThrow(/content_hash/i);
   });
 });

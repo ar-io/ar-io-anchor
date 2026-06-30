@@ -7,7 +7,7 @@
 // are genuine; only the Turbo POST is stubbed.
 
 import { createAnchorer, txIdFromDataItem } from "@ar.io/anchor";
-import { hexToBytes, verifyEnvelope, verifyInclusion } from "@ar.io/proof";
+import { bytesToHex, hexToBytes, sha256Hex, utf8, verifyEnvelope, verifyInclusion } from "@ar.io/proof";
 import { describe, expect, it } from "vitest";
 
 import { anchorCallbacks } from "../src/index";
@@ -81,5 +81,57 @@ describe("verifyEnvelope-green round-trip (@ar.io/proof 0.2.0 full-family)", () 
     expect(result.signatureOk).toBe(true); // signature still valid over the envelope
     expect(result.payloadHashOk).toBe(false); // but the bytes don't bind
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("opt-in content disclosure through the adapter (@ar.io/anchor 0.2.0)", () => {
+  it("a disclosed event embeds its raw bytes in the signed bundle, hash-bound", async () => {
+    const anchorer = createAnchorer({ uploader: stubUploader(), warn: () => {} });
+    // Commit exactly ONE event with a payload we control, so we know the exact
+    // bytes the adapter hashed (it anchors `data = JSON.stringify(mapPayload return)`).
+    // mapPayload returning null opts every later event out.
+    const known = { step: "chain_end", answer: "a verifiable history" };
+    let committedOne = false;
+    const provenance = anchorCallbacks(anchorer, {
+      mapPayload: () => {
+        if (committedOne) return null;
+        committedOne = true;
+        return known;
+      },
+    });
+    provenance.handleChainStart({}, { question: "what is provenance?" }, "root");
+    provenance.handleChatModelStart({}, [[]], "child", "root");
+    provenance.handleLLMEnd({ generations: [] }, "child", "root");
+    provenance.handleChainEnd({ answer: "a verifiable history" }, "root");
+    const receipts = await provenance.close();
+    expect(receipts.length).toBe(1);
+
+    const rawBytes = utf8(JSON.stringify(known));
+    const bundle = await anchorer.bundle(receipts, {
+      disclose: { [receipts[0]!.eventId]: rawBytes },
+    });
+
+    // Disclosed bytes ride in the signed body as lowercase hex...
+    const ev = bundle.body.events[0]!;
+    expect(ev.content).toBe(bytesToHex(rawBytes));
+    // ...and bind to the committed content_hash (toEvidenceBundle asserts this at
+    // assembly — it would have THROWN otherwise; assert the binding explicitly).
+    const record = JSON.parse(new TextDecoder().decode(hexToBytes(ev.record_bytes!))) as {
+      event: { content_hash: string };
+    };
+    expect(await sha256Hex(rawBytes)).toBe(record.event.content_hash);
+  });
+
+  it("disclosing bytes that do not match the committed hash throws at assembly", async () => {
+    const anchorer = createAnchorer({ uploader: stubUploader(), warn: () => {} });
+    const provenance = anchorCallbacks(anchorer);
+    provenance.handleChainStart({}, { question: "x" }, "root");
+    provenance.handleChainEnd({ answer: "y" }, "root");
+    const receipts = await provenance.close();
+    await expect(
+      anchorer.bundle(receipts, {
+        disclose: { [receipts[0]!.eventId]: utf8("not what was anchored") },
+      }),
+    ).rejects.toThrow(/content_hash/i);
   });
 });

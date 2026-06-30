@@ -110,6 +110,8 @@ export interface ToEvidenceBundleOptions {
   // Default off: with no disclose map the output is byte-identical to before.
   // For each entry sha256(bytes) MUST equal that event's committed
   // record.event.content_hash, else assembly throws (catches caller misuse).
+  // Keys for eventIds not in this receipt set are ignored — so one disclose map
+  // can be reused across bundles over disjoint receipt subsets.
   disclose?: Record<string /* eventId */, Uint8Array | string>;
 }
 

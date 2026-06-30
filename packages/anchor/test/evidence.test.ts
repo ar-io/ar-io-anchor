@@ -281,6 +281,19 @@ describe("toEvidenceBundle — opt-in content disclosure", () => {
     }
   });
 
+  it("default-off is inert: absent / undefined / empty disclose all yield byte-identical bundles", async () => {
+    // Same receipts → same per-envelope signed_at → fully deterministic. The only
+    // variable is the disclose option, so identical JSON proves the feature is a
+    // pure no-op when not exercised (the #1 non-negotiable: byte-identical to today).
+    const { signer, receipts } = await anchorBatch(3);
+    const at = "2026-06-22T00:00:00.000Z";
+    const absent = await toEvidenceBundle(receipts, { signer, generatedAt: at });
+    const undef = await toEvidenceBundle(receipts, { signer, generatedAt: at, disclose: undefined });
+    const empty = await toEvidenceBundle(receipts, { signer, generatedAt: at, disclose: {} });
+    expect(JSON.stringify(undef)).toBe(JSON.stringify(absent));
+    expect(JSON.stringify(empty)).toBe(JSON.stringify(absent));
+  });
+
   it("discloses one event's raw bytes as hex inside the signed body; others carry no content", async () => {
     const { signer, receipts } = await anchorBatch(3);
     const target = receipts[0]!; // anchored with data "event-0"
@@ -338,6 +351,48 @@ describe("toEvidenceBundle — opt-in content disclosure", () => {
     expect(disclosed.signature).not.toBe(plain.signature);
     expect((await verifyBundleWithKernel(plain)).bodyHashOk).toBe(true);
     expect((await verifyBundleWithKernel(disclosed)).bodyHashOk).toBe(true);
+  });
+
+  it("discloses several events at once, each bound to its own content_hash", async () => {
+    const { signer, receipts } = await anchorBatch(3);
+    const bundle = await toEvidenceBundle(receipts, {
+      signer,
+      disclose: {
+        [receipts[0]!.eventId]: "event-0",
+        [receipts[2]!.eventId]: "event-2",
+      },
+    });
+    const byId = new Map(bundle.body.events.map((e) => [e.envelope.event_id, e]));
+    expect(byId.get(receipts[0]!.eventId)!.content).toBe(bytesToHex(utf8("event-0")));
+    expect(byId.get(receipts[2]!.eventId)!.content).toBe(bytesToHex(utf8("event-2")));
+    // The middle event was not disclosed — no content key.
+    expect("content" in byId.get(receipts[1]!.eventId)!).toBe(false);
+    const v = await verifyBundleWithKernel(bundle);
+    expect(v.signatureOk).toBe(true);
+    expect(v.eventsOk).toBe(true);
+  });
+
+  it("ignores disclose entries for eventIds not in the receipt set (reusable map)", async () => {
+    const { signer, receipts } = await anchorBatch(2);
+    const at = "2026-06-22T00:00:00.000Z";
+    const baseline = await toEvidenceBundle(receipts, { signer, generatedAt: at });
+    // A superset map: one real eventId + one that belongs to some other bundle.
+    const bundle = await toEvidenceBundle(receipts, {
+      signer,
+      generatedAt: at,
+      disclose: { "not-an-event-in-this-bundle": "whatever", [receipts[0]!.eventId]: "event-0" },
+    });
+    // The stray key is a no-op; only the real event gains content.
+    expect(bundle.body.events.find((e) => e.envelope.event_id === receipts[0]!.eventId)!.content).toBe(
+      bytesToHex(utf8("event-0")),
+    );
+    expect("content" in bundle.body.events.find((e) => e.envelope.event_id === receipts[1]!.eventId)!).toBe(
+      false,
+    );
+    // And the stray key did not perturb anything beyond the one real disclosure:
+    // dropping the disclosed content reproduces the baseline body exactly.
+    delete bundle.body.events.find((e) => e.envelope.event_id === receipts[0]!.eventId)!.content;
+    expect(await sha256Hex(utf8(jcs(bundle.body)))).toBe(baseline.body_hash);
   });
 
   it("throws when disclosed bytes do not match the committed content_hash", async () => {

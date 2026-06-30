@@ -25,3 +25,6 @@ file are recorded in the git history and GitHub releases (`anchor-v*` tags).
     byte-identical to before, and your **on-chain footprint is unchanged** — the
     envelope still carries only the hash. Disclosure is purely a property of the file
     you choose to hand out, per event.
+
+  _Reported by Will Kempster ([@kempsterrrr](https://github.com/kempsterrrr)); verified
+  against the `@ar.io/proof` content check (`events[].content` → `contentOk`)._

@@ -59,6 +59,11 @@ export interface TraceInclusionBody {
 export interface TraceEventBody {
   envelope: EventsEnvelope;
   record_bytes?: string; // hex of JCS(event record); omitted when withheld
+  // Opt-in: the event's raw bytes, lowercase hex, disclosed INSIDE the signed
+  // body (so the bundle is self-contained and the disclosure is tamper-evident
+  // under body_hash). Omitted entirely under the default minimal-disclosure
+  // recipe. sha256(content) is asserted == record.event.content_hash at assembly.
+  content?: string;
   inclusion: TraceInclusionBody;
 }
 
@@ -96,6 +101,18 @@ export interface ToEvidenceBundleOptions {
   previousHash?: string;
   // Override the one-line verdict summary; counts/status are always recomputed.
   summary?: string;
+  // Opt-in raw-byte disclosure, keyed by eventId. Minimal disclosure never
+  // retained the raw bytes (the receipt carries only eventId + recordBytes), so
+  // the caller hands them back in here. Each disclosed event embeds its bytes as
+  // events[].content (lowercase hex) inside the SIGNED body — the bundle becomes
+  // one self-contained file (raw logs + on-chain locations) and the disclosure
+  // rides body_hash, so it stays tamper-evident. A string value is UTF-8 encoded.
+  // Default off: with no disclose map the output is byte-identical to before.
+  // For each entry sha256(bytes) MUST equal that event's committed
+  // record.event.content_hash, else assembly throws (catches caller misuse).
+  // Keys for eventIds not in this receipt set are ignored — so one disclose map
+  // can be reused across bundles over disjoint receipt subsets.
+  disclose?: Record<string /* eventId */, Uint8Array | string>;
 }
 
 const UINT8 = (b: Uint8Array): string => bytesToHex(b);
@@ -111,6 +128,21 @@ function merkleRootOfCheckpoint(recordBytes: Uint8Array): string {
     throw new Error("toEvidenceBundle: checkpoint record has no string event.merkle_root");
   }
   return root;
+}
+
+// Read the committed content_hash from an event record (parse its JCS bytes).
+// Disclosure asserts the caller-supplied raw bytes hash to THIS value. A record
+// with no event.content_hash (checkpoints, content-less event shapes) is not
+// disclosable — throw so the misuse is loud, not a silent no-op.
+function contentHashOfRecord(recordBytes: Uint8Array, eventId: string): string {
+  const record = JSON.parse(new TextDecoder().decode(recordBytes)) as {
+    event?: { content_hash?: unknown };
+  };
+  const hash = record.event?.content_hash;
+  if (typeof hash !== "string") {
+    throw new Error(`toEvidenceBundle: event ${eventId} has no event.content_hash — not disclosable`);
+  }
+  return hash;
 }
 
 function issuerFromSubject(subject: EventsSubject | undefined, override?: EvidenceIssuer): EvidenceIssuer {
@@ -147,18 +179,37 @@ export async function toEvidenceBundle(
   }
 
   // 2. Events reference their checkpoint by tx_id and carry their committed
-  //    record (external commitment) + inclusion proof.
-  const events: TraceEventBody[] = receipts.map((r) => ({
-    envelope: r.envelope,
-    record_bytes: UINT8(r.recordBytes),
-    inclusion: {
-      leaf_hash: r.leafHash,
-      leaf_index: r.leafIndex,
-      leaf_count: r.leafCount,
-      audit_path: [...r.auditPath],
-      checkpoint_tx_id: r.checkpointTxId,
-    },
-  }));
+  //    record (external commitment) + inclusion proof. When the caller opts into
+  //    disclosure for an event, its raw bytes are embedded (hex) in the body too,
+  //    asserted against the record's committed content_hash before signing.
+  const disclose = options.disclose;
+  const events: TraceEventBody[] = await Promise.all(
+    receipts.map(async (r): Promise<TraceEventBody> => {
+      const event: TraceEventBody = {
+        envelope: r.envelope,
+        record_bytes: UINT8(r.recordBytes),
+        inclusion: {
+          leaf_hash: r.leafHash,
+          leaf_index: r.leafIndex,
+          leaf_count: r.leafCount,
+          audit_path: [...r.auditPath],
+          checkpoint_tx_id: r.checkpointTxId,
+        },
+      };
+      const supplied = disclose?.[r.eventId];
+      if (supplied !== undefined) {
+        const bytes = typeof supplied === "string" ? utf8(supplied) : supplied;
+        const committed = contentHashOfRecord(r.recordBytes, r.eventId);
+        if ((await sha256Hex(bytes)) !== committed) {
+          throw new Error(
+            `toEvidenceBundle: disclosed content for ${r.eventId} does not match committed content_hash`,
+          );
+        }
+        event.content = UINT8(bytes);
+      }
+      return event;
+    }),
+  );
 
   const body: AnchorTraceBody = {
     checkpoints: [...checkpoints.values()],

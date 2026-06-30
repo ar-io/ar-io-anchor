@@ -78,6 +78,8 @@ const bundle = await ario.bundle(receipts); // signed with the anchorer's own ke
 await fs.writeFile("trace-bundle.json", JSON.stringify(bundle, null, 2));
 ```
 
+> Want the auditor to read the actual run — the raw step bytes, not just verify their hashes? Pass `ario.bundle(receipts, { disclose })` (keyed by `eventId`) to embed selected events' bytes inside the signed bundle — opt-in, default off, on-chain footprint unchanged. See [disclosure in the core README](https://github.com/ar-io/ar-io-anchor/blob/main/packages/anchor/README.md#optionally-include-the-raw-logs-opt-in-default-off).
+
 ```bash
 npx @ar.io/proof verify trace-bundle.json
 # optionally re-fetch each checkpoint on-chain to confirm it's anchored:

@@ -15,12 +15,14 @@ npm install && npm run build
 | [`04-s3.mjs`](04-s3.mjs) | Anchor-as-you-store with the S3 wrapper | S3 + one Turbo write |
 | [`05-langchain.mjs`](05-langchain.mjs) | A LangChain run batched into one checkpoint, then serialized to a portable `trace-bundle.json` — verify it with `npx @ar.io/proof verify` | one Turbo write |
 | [`06-vercel.mjs`](06-vercel.mjs) | A Vercel AI SDK call batched + correlation-id-chained, then serialized to a portable `trace-bundle.json` — verify it with `npx @ar.io/proof verify` | one Turbo write |
+| [`07-disclose.mjs`](07-disclose.mjs) | Opt-in disclosure: embed one event's raw bytes inside the signed bundle, so the file carries the raw logs *and* their on-chain proofs together — `npx @ar.io/proof verify` checks both | one Turbo write |
 
 ```bash
 node examples/01-anchor.mjs
 node examples/02-batch.mjs
 node examples/03-verify-onchain.mjs [txId] [recordFile]
 AWS_REGION=... S3_BUCKET=... node examples/04-s3.mjs
+node examples/07-disclose.mjs
 ```
 
 All examples run in dev mode: auto-generated identity and wallet, envelopes

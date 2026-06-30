@@ -7,6 +7,8 @@ file are recorded in the git history and GitHub releases (`anchor-v*` tags).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-06-30
+
 ### Added
 
 - **Opt-in raw-byte disclosure in evidence bundles.** `toEvidenceBundle(receipts, …)`

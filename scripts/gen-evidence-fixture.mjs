@@ -80,6 +80,11 @@ async function main() {
     issuer: { kind: "producer", producer_id: "fixture-producer" },
     generatedAt: GENERATED_AT,
     previousHash: "GENESIS",
+    // Disclose event 0's raw bytes in-body (events 1 & 2 stay withheld) so the
+    // golden exercises both contentOk:true (disclosed) and contentOk:null
+    // (undisclosed) verifier paths. The string is utf8-encoded and asserted
+    // against the event's committed content_hash before signing.
+    disclose: { [receipts[0].eventId]: "fixture-event-0" },
   });
 
   await writeFile(out, JSON.stringify(bundle, null, 2) + "\n", "utf8");

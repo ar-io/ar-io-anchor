@@ -63,6 +63,8 @@ async function buildFixtureBundle(): Promise<EvidenceBundle> {
     issuer: { kind: "producer", producer_id: "fixture-producer" },
     generatedAt: "2026-06-22T00:00:00.000Z",
     previousHash: "GENESIS",
+    // Mirror gen-evidence-fixture.mjs: event 0 discloses its raw bytes in-body.
+    disclose: { [receipts[0]!.eventId]: "fixture-event-0" },
   });
 }
 
@@ -102,6 +104,14 @@ describe("gen-evidence-fixture recipe stays kernel-verifiable", () => {
       );
       expect(inclOk).toBe(true);
     }
+
+    // Disclosure: event 0 carries its raw bytes in-body (hex), events 1 & 2 do
+    // not; the disclosed hex hashes to the event's committed content_hash.
+    expect(typeof bundle.body.events[0]!.content).toBe("string");
+    expect(bundle.body.events[1]!.content).toBeUndefined();
+    expect(bundle.body.events[2]!.content).toBeUndefined();
+    const rec0 = JSON.parse(new TextDecoder().decode(hexBytes(bundle.body.events[0]!.record_bytes!)));
+    expect(await sha256Hex(hexBytes(bundle.body.events[0]!.content!))).toBe(rec0.event.content_hash);
   });
 });
 

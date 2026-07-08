@@ -1,6 +1,6 @@
 # ar-io-anchor
 
-> Packages `@ar.io/anchor` and `@ar.io/anchor-s3`, v0.1.0. Profile [`ario.events/v1`](docs/profile-ario.events-v1.md), registered in [`envelope-spec.md`](https://github.com/ar-io/ar-io-proof/blob/main/specs/envelope-spec.md) §4. Origin: [ar-io-agent#11](https://github.com/ar-io/ar-io-agent/issues/11).
+> `@ar.io/anchor` plus its adapter packages (see the table below). Profile [`ario.events/v1`](docs/profile-ario.events-v1.md), registered in [`envelope-spec.md`](https://github.com/ar-io/ar-io-proof/blob/main/specs/envelope-spec.md) §4. Origin: [ar-io-agent#11](https://github.com/ar-io/ar-io-agent/issues/11).
 
 The **TypeScript write path** of the ar.io verification stack: take bytes (or a pre-computed hash) plus minimal metadata → signed event envelope under `ario.events/v1` → ANS-104 data item → Turbo upload → receipt. Raw data is hashed locally and **never uploaded**. The verify side is the separate read-only [`@ar.io/proof`](https://www.npmjs.com/package/@ar.io/proof).
 
@@ -43,6 +43,9 @@ Runnable, in [`examples/`](examples/): anchor + offline verify, batch + inclusio
 |---|---|
 | [`packages/anchor`](packages/anchor) (`@ar.io/anchor`) | Envelope assembly, Signer interface, hand-rolled ANS-104 builder (ed25519 sigType 2), fetch-based Turbo uploader, Merkle batcher, dev/prod gate. Runtime deps: `@ar.io/proof` + `@noble/{ed25519,hashes}` — nothing else. |
 | [`packages/s3`](packages/s3) (`@ar.io/anchor-s3`) | The S3 wrapper adapter. Dependencies point adapter → core, never back. |
+| [`packages/langchain`](packages/langchain) (`@ar.io/anchor-langchain`) | LangChain.js callback handler: the agent's run tree as a Merkle-batched, deletion-evident event chain. |
+| [`packages/vercel`](packages/vercel) (`@ar.io/anchor-vercel`) | Vercel AI SDK middleware: every generation anchored on the batcher hot path. |
+| [`packages/interchange`](packages/interchange) (`@ar.io/anchor-interchange`) | [Interchange](https://github.com/faremeter/interchange) AuditStore decorator: per-session anchored audit chains, signed with the agent's own identity key (structural typing — no `@intx` dependency). |
 
 ## Conformance & proof
 
@@ -63,6 +66,8 @@ ANCHOR_LIVE_SMOKE=1 npx vitest run packages/anchor/test/live-smoke.test.ts  # re
 
 ## Follow-on lanes (breadcrumbs, not built here)
 
-- **LangChain.js / Vercel AI SDK adapter** — callback-shaped, exercises the batcher on the hot path. Test seam: spy anchorer (see `packages/s3/test`).
+Graduated: the LangChain.js, Vercel AI SDK, and Interchange adapters — callback/decorator-shaped, exercising the batcher on the hot path with the spy-anchorer test seam (see `packages/s3/test`) — are built, in the package table above.
+
 - **api-guard `producer:enroll`** — production-mode public-key registration; `createAnchorer({ apiGuard })` already accepts the config shape and the SDK stubs against it.
 - **Python anchor sibling** (`ar-io-proof` v0.2+) — same architecture, same corpus.
+- **Receipt persistence inside Interchange** — an upstream PR to [faremeter/interchange](https://github.com/faremeter/interchange) wiring `anchoredAuditStore` into the sidecar composition layer and persisting receipts to `state/anchor/{sessionId}/`.

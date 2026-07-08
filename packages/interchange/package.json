@@ -25,7 +25,8 @@
     "@ar.io/anchor": "^0.2.0"
   },
   "devDependencies": {
-    "@ar.io/proof": "^0.2.0"
+    "@ar.io/proof": "^0.2.0",
+    "@intx/types": "^0.1.2"
   },
   "repository": {
     "type": "git",

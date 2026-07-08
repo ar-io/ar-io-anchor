@@ -112,6 +112,8 @@ A single receipt also verifies by hand with `verifyEnvelope(r.envelope, { payloa
 
 The adapter defines minimal **structural** (duck-typed) interfaces — `InterchangeAuditRecord`, `InterchangeErrorRecord`, `InterchangeAuditStore`, `InterchangeCryptoProvider` — that mirror the shapes in `@intx/types` and `@intx/crypto`, rather than importing them. Some `@intx/*` packages are on npm and some are not (`@intx/crypto` isn't, as of this writing), all are pre-1.0, and `@intx/types` carries a runtime validation dependency this adapter doesn't need. Structural typing sidesteps all of that: any object with the right shape works, from any Interchange version, with zero version coupling — and this package's dependency tree stays exactly [`@ar.io/anchor`](https://github.com/ar-io/ar-io-anchor/tree/main/packages/anchor).
 
+Drift is guarded, not assumed away: `@intx/types` is a **devDependency** feeding a compatibility gate (`test/intx-compat.test.ts`) that typechecks every real API boundary against Interchange's own types — their store decorates, their records anchor, their `CryptoProvider` adapts, and the decorated store hands back to Interchange as an `AuditStore` — and validates our test fixtures against their runtime schemas. If an `@intx/types` bump changes a shape, CI fails here instead of in a consumer. The decorator is generic over the record types, so decorating a store typed with Interchange's narrower records preserves those types end-to-end.
+
 ## License
 
 MIT. This package depends only on [`@ar.io/anchor`](https://github.com/ar-io/ar-io-anchor/tree/main/packages/anchor).

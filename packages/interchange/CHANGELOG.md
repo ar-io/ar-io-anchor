@@ -25,3 +25,9 @@ versions **independently** of the `@ar.io/anchor` + `@ar.io/anchor-s3` core (own
   `AuditCollector.flush()` directly instead of the store.
 - Event vocabulary `interchange.tool_call` / `interchange.tool_blocked` /
   `interchange.error` (exported as `EVENT_TYPES`).
+- Drift gate: `@intx/types` as a devDependency (nothing ships to consumers)
+  with a compatibility test that typechecks every API boundary against
+  Interchange's own types and validates fixtures against their runtime
+  schemas. The store surface is generic over the record types, so a store
+  typed with Interchange's own records decorates and hands back to
+  Interchange without a cast.

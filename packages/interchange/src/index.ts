@@ -86,10 +86,17 @@ export type InterchangeErrorRecord = {
 };
 
 // @intx/types/runtime's AuditStore — the surface this adapter decorates.
-export interface InterchangeAuditStore {
-  commitAudit(records: InterchangeAuditRecord[], signal?: AbortSignal): Promise<void>;
-  loadAudit(sessionId: string, signal?: AbortSignal): Promise<InterchangeAuditRecord[]>;
-  commitErrors(records: InterchangeErrorRecord[], signal?: AbortSignal): Promise<void>;
+// Generic over the record types (defaulting to the mirrors) so decorating a
+// store typed with Interchange's OWN narrower records preserves those types
+// end-to-end: the decorated store still satisfies @intx's AuditStore and
+// hands back to Interchange without a cast.
+export interface InterchangeAuditStore<
+  R extends InterchangeAuditRecord = InterchangeAuditRecord,
+  E extends InterchangeErrorRecord = InterchangeErrorRecord,
+> {
+  commitAudit(records: R[], signal?: AbortSignal): Promise<void>;
+  loadAudit(sessionId: string, signal?: AbortSignal): Promise<R[]>;
+  commitErrors(records: E[], signal?: AbortSignal): Promise<void>;
 }
 
 // ---- the CryptoProvider → Signer adapter ---------------------------------
@@ -156,8 +163,12 @@ interface SessionState {
   receipts: Promise<InclusionReceipt>[];
 }
 
-export class AnchoredAuditStore implements InterchangeAuditStore {
-  readonly #inner: InterchangeAuditStore;
+export class AnchoredAuditStore<
+  R extends InterchangeAuditRecord = InterchangeAuditRecord,
+  E extends InterchangeErrorRecord = InterchangeErrorRecord,
+> implements InterchangeAuditStore<R, E>
+{
+  readonly #inner: InterchangeAuditStore<R, E>;
   readonly #anchorer: Anchorer;
   readonly #batchOptions: BatchOptions;
   readonly #mapPayload: AnchoredAuditStoreOptions["mapPayload"];
@@ -167,7 +178,7 @@ export class AnchoredAuditStore implements InterchangeAuditStore {
   readonly #sessions = new Map<string, SessionState>();
 
   constructor(
-    inner: InterchangeAuditStore,
+    inner: InterchangeAuditStore<R, E>,
     anchorer: Anchorer,
     options: AnchoredAuditStoreOptions = {},
   ) {
@@ -185,16 +196,16 @@ export class AnchoredAuditStore implements InterchangeAuditStore {
   // throws, anchor nothing — never attest to a record that was not
   // persisted. Each anchored record is one in-memory batch.add(); signing
   // and the single upload happen at window flush, off the hot path.
-  async commitAudit(records: InterchangeAuditRecord[], signal?: AbortSignal): Promise<void> {
+  async commitAudit(records: R[], signal?: AbortSignal): Promise<void> {
     await this.#inner.commitAudit(records, signal);
     for (const record of records) this.#anchorAudit(record);
   }
 
-  async loadAudit(sessionId: string, signal?: AbortSignal): Promise<InterchangeAuditRecord[]> {
+  async loadAudit(sessionId: string, signal?: AbortSignal): Promise<R[]> {
     return this.#inner.loadAudit(sessionId, signal);
   }
 
-  async commitErrors(records: InterchangeErrorRecord[], signal?: AbortSignal): Promise<void> {
+  async commitErrors(records: E[], signal?: AbortSignal): Promise<void> {
     await this.#inner.commitErrors(records, signal);
     for (const record of records) this.#anchorError(record);
   }
@@ -230,13 +241,13 @@ export class AnchoredAuditStore implements InterchangeAuditStore {
   // Anchor already-persisted audit records WITHOUT delegating — for hosts
   // that hook AuditCollector.flush() instead of the store. Same batches,
   // same session chains.
-  anchorAudits(records: InterchangeAuditRecord[]): void {
+  anchorAudits(records: R[]): void {
     for (const record of records) this.#anchorAudit(record);
   }
 
   // ---- internals ----------------------------------------------------------
 
-  #anchorAudit(record: InterchangeAuditRecord): void {
+  #anchorAudit(record: R): void {
     const blocked = record.authz?.blocked === true;
     this.#anchor(blocked ? "interchange.tool_blocked" : "interchange.tool_call", record, {
       sessionId: record.sessionId,
@@ -247,7 +258,7 @@ export class AnchoredAuditStore implements InterchangeAuditStore {
     });
   }
 
-  #anchorError(record: InterchangeErrorRecord): void {
+  #anchorError(record: E): void {
     this.#anchor("interchange.error", record, {
       sessionId: record.sessionId,
       callId: null,
@@ -259,7 +270,7 @@ export class AnchoredAuditStore implements InterchangeAuditStore {
 
   #anchor(
     type: InterchangeEventType,
-    record: InterchangeAuditRecord | InterchangeErrorRecord,
+    record: R | E,
     info: {
       sessionId: string;
       callId: string | null;
@@ -334,21 +345,24 @@ export class AnchoredAuditStore implements InterchangeAuditStore {
 //   const store = anchoredAuditStore(gitStore, createAnchorer({ signer }));
 //   // ... hand `store` to Interchange wherever an AuditStore goes ...
 //   const receipts = await store.close();
-export function anchoredAuditStore(
-  inner: InterchangeAuditStore,
+export function anchoredAuditStore<
+  R extends InterchangeAuditRecord = InterchangeAuditRecord,
+  E extends InterchangeErrorRecord = InterchangeErrorRecord,
+>(
+  inner: InterchangeAuditStore<R, E>,
   anchorer: Anchorer,
   options?: AnchoredAuditStoreOptions,
-): AnchoredAuditStore {
+): AnchoredAuditStore<R, E> {
   return new AnchoredAuditStore(inner, anchorer, options);
 }
 
 // Convenience for hosts that hook the collector instead of the store:
 //
 //   anchorRecordsFromCollector(store, collector.flush());
-export function anchorRecordsFromCollector(
-  store: AnchoredAuditStore,
-  records: InterchangeAuditRecord[],
-): void {
+export function anchorRecordsFromCollector<
+  R extends InterchangeAuditRecord,
+  E extends InterchangeErrorRecord,
+>(store: AnchoredAuditStore<R, E>, records: R[]): void {
   store.anchorAudits(records);
 }
 

@@ -421,3 +421,52 @@ describe("sketch 5 — no logStore configured: byte-identical to today, no conte
     expect("contentStored" in receipt).toBe(false);
   });
 });
+
+describe("FsLogStore — eventId reuse with different content fails loudly (idempotency guard)", () => {
+  it("throws on same eventId + different content; get() never returns the wrong bytes", async () => {
+    const store = new FsLogStore(join(tmpDir(), "cas"));
+    const A = utf8("content-A");
+    const B = utf8("content-B");
+    await store.put({ eventId: "E", contentHash: await sha256Hex(A), content: A });
+
+    // Reusing eventId E with DIFFERENT content must throw, not silently overwrite
+    // the pointer (which would make get("E") return B for the original event, so
+    // sha256(get("E")) !== event A's committed content_hash at audit time).
+    await expect(
+      store.put({ eventId: "E", contentHash: await sha256Hex(B), content: B }),
+    ).rejects.toThrow(/reused with different content/);
+
+    // The original mapping is intact: get("E") still returns A, never B.
+    expect(await store.get("E")).toEqual(A);
+  });
+
+  it("stays idempotent on a true retry (same eventId, same content)", async () => {
+    const store = new FsLogStore(join(tmpDir(), "cas"));
+    const A = utf8("same-bytes");
+    const h = await sha256Hex(A);
+    const r1 = await store.put({ eventId: "E", contentHash: h, content: A });
+    const r2 = await store.put({ eventId: "E", contentHash: h, content: A }); // retry: no-op
+    expect(r2.ref).toBe(r1.ref);
+    expect(await store.get("E")).toEqual(A);
+  });
+
+  it("surfaces the reuse as a loud RetentionError through the anchor pipeline (strict)", async () => {
+    const anchorer = createAnchorer({
+      uploader: new StubUploader(),
+      warn: () => {},
+      logStore: new FsLogStore(join(tmpDir(), "cas")),
+    });
+    // Same caller-supplied eventId, different content: whichever put() runs
+    // second throws inside runPut → strict mode rejects THAT event's receipt
+    // with a typed RetentionError rather than silently storing wrong bytes.
+    const id = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d";
+    const batch = anchorer.batch({ maxEvents: 2 });
+    const results = await Promise.allSettled([
+      batch.add({ data: "first", eventId: id }).receipt(),
+      batch.add({ data: "second", eventId: id }).receipt(),
+    ]);
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(rejected.length).toBe(1); // exactly the later put() fails, loudly
+    expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(RetentionError);
+  });
+});

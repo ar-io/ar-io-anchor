@@ -105,10 +105,38 @@ export class FsLogStore implements LogStore {
 
   async put(content: StoredContent): Promise<{ ref: string }> {
     const path = this.contentPath(content.contentHash);
+    const pointerPath = this.eventPath(content.eventId);
+
+    // Idempotency guard. The contract is "idempotent on eventId": a true retry
+    // (same eventId, same content) is a safe no-op. But the SAME eventId with
+    // DIFFERENT content is eventId REUSE — silently overwriting the pointer would
+    // make get(eventId) return the NEWER event's bytes for the OLDER event, so
+    // sha256(get(eventId)) !== the older event's committed content_hash at audit
+    // time (a silent, audit-time-only wrong-bytes read). eventIds are unique per
+    // event by construction (UUIDv4), so a distinct-content collision is caller
+    // misuse — fail LOUDLY here instead of corrupting the mapping. runPut turns
+    // the throw into a retention error (strict: skip + enumerate; best-effort:
+    // warn + contentStored:false), never a silent overwrite.
+    let existing: string | undefined;
+    try {
+      existing = readFileSync(pointerPath, "utf8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+    if (existing !== undefined) {
+      const prior = (JSON.parse(existing) as { contentHash?: string }).contentHash;
+      if (prior !== undefined && prior !== content.contentHash) {
+        throw new Error(
+          `FsLogStore: eventId ${content.eventId} reused with different content ` +
+            `(stored ${prior}, now ${content.contentHash}); eventIds must be unique per event`,
+        );
+      }
+    }
+
     // Content-addressed: same hash ⇒ same bytes, so an overwrite is a no-op.
     writeFileSync(path, content.content);
     writeFileSync(
-      this.eventPath(content.eventId),
+      pointerPath,
       JSON.stringify({
         contentHash: content.contentHash,
         ...(content.contentType !== undefined ? { contentType: content.contentType } : {}),

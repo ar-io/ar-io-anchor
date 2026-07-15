@@ -19,7 +19,7 @@ const receipts = await Promise.all(handles.map((h) => h.receipt()));
 await ario.close(); // always close — flushes anything still buffered
 
 console.log("one checkpoint for all five:", receipts[0].checkpointTxId);
-console.log("explorer:", receipts[0].explorerUrl);
+console.log("explorer:", `https://viewblock.io/arweave/tx/${receipts[0].checkpointTxId}`);
 
 // Verify one event's inclusion offline: its leaf hash is computed from the
 // event's own signed envelope bytes, then the audit path must reproduce the

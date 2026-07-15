@@ -22,7 +22,7 @@ const { receipt, provenanceKey } = await s3.putObject({
   Body: "object bytes — hashed locally, never sent to Arweave",
 });
 
-console.log("anchored:  ", receipt.explorerUrl);
+console.log("anchored:  ", `https://viewblock.io/arweave/tx/${receipt.txId}`);
 console.log("sidecar:   ", `s3://${Bucket}/${provenanceKey}`);
 console.log("verify later with examples/03-verify-onchain.mjs", receipt.txId);
 

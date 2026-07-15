@@ -218,8 +218,15 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
       }
     }
 
-    // payload_ref / ref binding: caller-supplied ref WINS; the logStore ref
-    // fills only when the caller left it empty.
+    // payload_ref / ref binding: caller-supplied ref WINS; the logStore's
+    // content-addressed ref fills only when the caller left it empty. This ref
+    // is a producer-ASSERTED locator, never a trust signal — a verifier fetches
+    // whatever is at it and re-hashes against content_hash (envelope-spec §2:
+    // "a lying locator is caught by the hash, never trusted on its own"), so
+    // signing a caller ref the SDK did not itself store is by-design (external-
+    // commitment). It is orthogonal to `contentStored` (see RetainedEvent):
+    // contentStored reports whether the SDK's logStore kept a byte-exact copy,
+    // which may live at a DIFFERENT location than a caller-supplied payload_ref.
     const effectiveRef = input.ref ?? putRef;
 
     // Chain head resolves from the store; GENESIS for a chain's first link.

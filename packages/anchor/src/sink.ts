@@ -50,6 +50,13 @@ export interface RetainedEvent {
   // Without this on the durable row, a never-stored event is byte-indistinguishable
   // from a fully-retained one — the silent, audit-time-only failure this seam
   // exists to kill. `contentStored:false` MUST survive to disk, not just the receipt.
+  //
+  // ORTHOGONAL to `ref`/payload_ref. `ref` is a producer-ASSERTED locator, never
+  // a trust signal — integrity is always content_hash (envelope-spec §2: "a lying
+  // locator is caught by the hash, never trusted on its own"). A caller-supplied
+  // `ref` may name a DIFFERENT location than the SDK's retained copy, so
+  // contentStored:true means "the SDK kept a byte-exact copy" (fetchable via
+  // logStore.get(eventId)), NOT "the payload_ref location was verified".
   contentStored?: boolean;
   proof:
     | { kind: "direct"; txId: string; gatewayUrl: string }

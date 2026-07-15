@@ -67,12 +67,15 @@ export type {
   Sink,
   SinkRecord,
 } from "./sink.js";
+export { CallbackLogStore, FsLogStore } from "./logstore.js";
+export type { LogStore, RetentionErrorMode, StoredContent } from "./logstore.js";
 export { DEFAULT_TURBO_UPLOAD_URL, TurboUploader } from "./turbo.js";
 export type { TurboUploaderOptions, UploadReceipt, Uploader } from "./turbo.js";
 export {
   AnchorError,
   FundingExhaustedError,
   ProductionConfigError,
+  RetentionError,
   TxIdMismatchError,
   UploadFailedError,
   UploadRejectedError,

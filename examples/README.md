@@ -16,6 +16,7 @@ npm install && npm run build
 | [`05-langchain.mjs`](05-langchain.mjs) | A LangChain run batched into one checkpoint, then serialized to a portable `trace-bundle.json` — verify it with `npx @ar.io/proof verify` | one Turbo write |
 | [`06-vercel.mjs`](06-vercel.mjs) | A Vercel AI SDK call batched + correlation-id-chained, then serialized to a portable `trace-bundle.json` — verify it with `npx @ar.io/proof verify` | one Turbo write |
 | [`07-disclose.mjs`](07-disclose.mjs) | Opt-in disclosure: embed one event's raw bytes inside the signed bundle, so the file carries the raw logs *and* their on-chain proofs together — `npx @ar.io/proof verify` checks both | one Turbo write |
+| [`08-retain.mjs`](08-retain.mjs) | **Durable retention (T9):** inject a `Sink` (durable proof rows) + a `LogStore` (byte-exact content) once — every event's proof *and* exact committed bytes persist, then rebuild + re-verify the whole trace from disk (`sha256(stored) === committed hash`) | one Turbo write |
 
 ```bash
 node examples/01-anchor.mjs
@@ -23,6 +24,7 @@ node examples/02-batch.mjs
 node examples/03-verify-onchain.mjs [txId] [recordFile]
 AWS_REGION=... S3_BUCKET=... node examples/04-s3.mjs
 node examples/07-disclose.mjs
+node examples/08-retain.mjs
 ```
 
 All examples run in dev mode: auto-generated identity and wallet, envelopes

@@ -24,6 +24,7 @@ import { sha256 } from "@noble/hashes/sha2";
 
 import { buildEnvelope } from "./envelope.js";
 import { buildEventRecord } from "./record.js";
+import { type Sink, writeCheckpointSafely, writeEventSafely, writeIntentSafely } from "./sink.js";
 import type { Store } from "./store.js";
 import type { Environment, EventsEnvelope, EventsSubject, Signer } from "./types.js";
 
@@ -73,6 +74,10 @@ export interface InclusionReceipt {
 }
 
 export interface AddHandle {
+  // The event's stable id, known synchronously at add() (caller-supplied or
+  // minted here) — the join key a sink's writeIntent row is written under,
+  // available before the proof exists.
+  readonly eventId: string;
   receipt(): Promise<InclusionReceipt>;
 }
 
@@ -95,6 +100,10 @@ export interface BatcherContext {
   environment: Environment;
   store: Store;
   anchorCheckpointEnvelope(envelopeBytes: Uint8Array): Promise<{ txId: string }>;
+  // Proof retention (T9 Phase 1), injected alongside `store`. Absent → no
+  // retention writes (byte-identical to today). `warn` reports sink failures.
+  sink?: Sink;
+  warn?: (message: string) => void;
   // Test seam (fake clock). Defaults to real timers.
   timers?: {
     setTimeout(fn: () => void, ms: number): unknown;
@@ -105,6 +114,9 @@ export interface BatcherContext {
 
 interface Buffered {
   input: BatchEventInput;
+  // Minted (or caller-supplied) at add(), not at flush — a sink's writeIntent
+  // needs a stable key before the proof exists (T9 Phase 1 / eventId-at-add).
+  eventId: string;
   contentHash: string;
   contentLength: number | undefined;
   addedAt: number;
@@ -124,6 +136,7 @@ export class Batcher implements Batch {
   private closed = false;
   private readonly chainKey: string;
   private readonly timers: NonNullable<BatcherContext["timers"]>;
+  private readonly warn: (message: string) => void;
 
   constructor(
     private readonly opts: BatchOptions,
@@ -140,6 +153,7 @@ export class Batcher implements Batch {
       throw new Error("batch: maxEvents must be a positive integer");
     }
     this.chainKey = `batcher:${opts.name ?? "default"}`;
+    this.warn = ctx.warn ?? ((m: string) => console.warn(m));
     this.timers = ctx.timers ?? {
       setTimeout: (fn, ms) => setTimeout(fn, ms),
       clearTimeout: (h) => clearTimeout(h as Parameters<typeof clearTimeout>[0]),
@@ -171,6 +185,11 @@ export class Batcher implements Batch {
       contentHash = event.contentHash!;
     }
 
+    // Mint the eventId now (not at flush): the sink's writeIntent needs a
+    // stable join key before the proof exists, and the handle exposes it
+    // synchronously. Caller-supplied wins; buildEnvelope validates it at flush.
+    const eventId = event.eventId ?? crypto.randomUUID();
+
     let resolve!: (r: InclusionReceipt) => void;
     let reject!: (e: unknown) => void;
     const promise = new Promise<InclusionReceipt>((res, rej) => {
@@ -179,6 +198,7 @@ export class Batcher implements Batch {
     });
     const entry: Buffered = {
       input: event,
+      eventId,
       contentHash,
       contentLength,
       addedAt: this.timers.now(),
@@ -187,6 +207,14 @@ export class Batcher implements Batch {
       promise,
     };
     this.buffer.push(entry);
+
+    // The durable "offered for anchoring" record (proof not yet known). Fire-
+    // and-forget + safe: a sink failure warns, never blocks add() or the flush.
+    writeIntentSafely(this.ctx.sink, this.warn, {
+      eventId,
+      contentHash,
+      ...(event.ref !== undefined ? { ref: event.ref } : {}),
+    });
 
     // Timers: maxAge anchors to the FIRST event of the window; idle resets
     // on every add. First trigger wins — flush() clears both.
@@ -207,7 +235,7 @@ export class Batcher implements Batch {
     // Surface async flush failures through receipt(), never as unhandled
     // rejections from timer ticks.
     promise.catch(() => {});
-    return { receipt: () => promise };
+    return { eventId, receipt: () => promise };
   }
 
   async flush(): Promise<void> {
@@ -266,7 +294,9 @@ export class Batcher implements Batch {
           record,
           signer: this.ctx.signer,
           environment: this.ctx.environment,
-          ...(entry.input.eventId !== undefined ? { eventId: entry.input.eventId } : {}),
+          // eventId was minted at add() (§eventId-at-add); pass it explicitly
+          // so the envelope carries the same id the intent row was keyed under.
+          eventId: entry.eventId,
         });
         leaves.push({
           entry,
@@ -305,22 +335,51 @@ export class Batcher implements Batch {
       // 3. ONE upload per window. Head advances only after acceptance.
       const { txId } = await this.ctx.anchorCheckpointEnvelope(checkpoint.envelopeBytes);
       await this.ctx.store.setHead(this.chainKey, checkpoint.payloadHash);
+      const gatewayUrl = `https://turbo-gateway.com/${txId}`;
 
-      // 4. Resolve every receipt with its standalone proof.
+      // 4. Retain the checkpoint row for this window, then per-event proof
+      //    rows. Upload-then-sink: these run only after the tx was accepted.
+      //    All writes are safe-wrapped (never throw), so a sink failure warns
+      //    and never blocks receipt resolution below.
+      await writeCheckpointSafely(this.ctx.sink, this.warn, {
+        txId,
+        envelope: checkpoint.envelope,
+        recordBytes: checkpoint.recordBytes,
+        merkleRoot: bytesToHex(root),
+        gatewayUrl,
+      });
+
+      // 5. Retain each event's proof row, then resolve its receipt.
       for (let i = 0; i < leaves.length; i++) {
         const leaf = leaves[i]!;
         const path = await auditPath(i, leafHashes);
+        const auditPathHex = path.map(bytesToHex);
+        await writeEventSafely(this.ctx.sink, this.warn, {
+          eventId: leaf.entry.eventId,
+          contentHash: leaf.entry.contentHash,
+          envelope: leaf.envelope,
+          recordBytes: leaf.recordBytes,
+          ...(leaf.entry.input.ref !== undefined ? { ref: leaf.entry.input.ref } : {}),
+          proof: {
+            kind: "inclusion",
+            leafHash: bytesToHex(leaf.leafHash),
+            leafIndex: i,
+            leafCount: leaves.length,
+            auditPath: auditPathHex,
+            checkpointTxId: txId,
+          },
+        });
         leaf.entry.resolve({
           checkpointTxId: txId,
           checkpointEnvelope: checkpoint.envelope,
           checkpointRecordBytes: checkpoint.recordBytes,
-          gatewayUrl: `https://turbo-gateway.com/${txId}`,
+          gatewayUrl,
           root: bytesToHex(root),
           leafHash: bytesToHex(leaf.leafHash),
           leafIndex: i,
           leafCount: leaves.length,
-          auditPath: path.map(bytesToHex),
-          eventId: leaf.envelope.event_id,
+          auditPath: auditPathHex,
+          eventId: leaf.entry.eventId,
           contentHash: leaf.entry.contentHash,
           envelope: leaf.envelope,
           envelopeBytes: leaf.envelopeBytes,

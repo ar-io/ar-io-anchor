@@ -30,7 +30,7 @@ import {
   verifyEnvelope,
   verifyInclusion,
 } from "@ar.io/proof";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -448,6 +448,21 @@ describe("FsLogStore — eventId reuse with different content fails loudly (idem
     const r2 = await store.put({ eventId: "E", contentHash: h, content: A }); // retry: no-op
     expect(r2.ref).toBe(r1.ref);
     expect(await store.get("E")).toEqual(A);
+  });
+
+  it("self-heals a corrupt pointer (unparseable state must not block the retry)", async () => {
+    const cas = join(tmpDir(), "cas");
+    const store = new FsLogStore(cas);
+    const A = utf8("recovered");
+    // Simulate a torn/tampered pointer write for eventId "E": the events/ file is
+    // named by sha256(eventId), matching the store's private layout. An
+    // unparseable pointer can't tell us a prior hash, so put() must self-heal
+    // (overwrite), NOT throw the reuse guard on garbage.
+    writeFileSync(join(cas, "events", await sha256Hex(utf8("E"))), "{ not valid json");
+    await expect(
+      store.put({ eventId: "E", contentHash: await sha256Hex(A), content: A }),
+    ).resolves.toBeDefined();
+    expect(await store.get("E")).toEqual(A); // the fresh valid pointer resolves
   });
 
   it("surfaces the reuse as a loud RetentionError through the anchor pipeline (strict)", async () => {

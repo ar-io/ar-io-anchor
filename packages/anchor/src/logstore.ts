@@ -124,7 +124,17 @@ export class FsLogStore implements LogStore {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
     if (existing !== undefined) {
-      const prior = (JSON.parse(existing) as { contentHash?: string }).contentHash;
+      // An unparseable pointer (a torn write or external tampering) cannot tell
+      // us a prior contentHash, so it must NOT block: we overwrite it with a
+      // fresh valid one (self-heal), keeping the eventId retryable. The guard
+      // fires ONLY on a well-formed pointer that names DIFFERENT content — the
+      // genuine reuse case.
+      let prior: string | undefined;
+      try {
+        prior = (JSON.parse(existing) as { contentHash?: string }).contentHash;
+      } catch {
+        prior = undefined;
+      }
       if (prior !== undefined && prior !== content.contentHash) {
         throw new Error(
           `FsLogStore: eventId ${content.eventId} reused with different content ` +

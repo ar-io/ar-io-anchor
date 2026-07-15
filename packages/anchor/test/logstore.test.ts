@@ -339,6 +339,50 @@ describe("sketch 4 — strict fails loudly + enumerably; best-effort flags conte
     expect(warnings.some((w) => w.includes("contentStored:false"))).toBe(true);
   });
 
+  it("best-effort: contentStored survives to the DURABLE sink trace, not just the receipt", async () => {
+    // The retention-truth flag MUST reach disk: a never-stored event's proof row
+    // has to be distinguishable from a fully-retained one, else the durable trace
+    // silently lies (the audit-time-only failure this seam exists to kill).
+    // FsSink round-trips it through the full path: wiring → writeEvent →
+    // JSON serialize → FsSink.read.
+    const path = join(tmpDir(), "retention.jsonl");
+    const anchorer = createAnchorer({
+      uploader: new StubUploader(),
+      warn: () => {},
+      logStore: poisonStore("poison"),
+      onRetentionError: "anchor-anyway-flag",
+      sink: new FsSink(path),
+    });
+    const batch = anchorer.batch({ maxEvents: 2 });
+    const [rok, rpoison] = await Promise.all([
+      batch.add({ data: "fine" }).receipt(),
+      batch.add({ data: "poison" }).receipt(),
+    ]);
+
+    const events = FsSink.read(path).flatMap((r) => (r.type === "event" ? [r.event] : []));
+    const byId = new Map(events.map((e) => [e.eventId, e]));
+    // The durable row agrees with the receipt — false for the never-stored event.
+    expect(byId.get(rok.eventId)?.contentStored).toBe(true);
+    expect(byId.get(rpoison.eventId)?.contentStored).toBe(false);
+  });
+
+  it("single-shot best-effort: the durable event row carries contentStored:false", async () => {
+    const path = join(tmpDir(), "retention.jsonl");
+    const anchorer = createAnchorer({
+      uploader: new StubUploader(),
+      warn: () => {},
+      logStore: poisonStore("poison"),
+      onRetentionError: "anchor-anyway-flag",
+      sink: new FsSink(path),
+    });
+    const receipt = await anchorer.anchor({ data: "poison" });
+    expect(receipt.contentStored).toBe(false);
+
+    const events = FsSink.read(path).flatMap((r) => (r.type === "event" ? [r.event] : []));
+    expect(events).toHaveLength(1);
+    expect(events[0]?.contentStored).toBe(false);
+  });
+
   it("single-shot strict rejects (nothing uploaded); best-effort returns contentStored:false", async () => {
     const strictUploader = new StubUploader();
     const strict = createAnchorer({

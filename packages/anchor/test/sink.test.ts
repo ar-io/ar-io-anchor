@@ -15,7 +15,7 @@
 // and Merkle proofs are genuine.
 
 import { bytesToHex, hexToBytes, verifyEnvelope, verifyInclusion } from "@ar.io/proof";
-import { mkdtempSync, rmSync } from "node:fs";
+import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -379,5 +379,31 @@ describe("RetainedEvent / RetainedCheckpoint typing sanity", () => {
     expect(direct.kind).toBe("direct");
     expect(inclusion.kind).toBe("inclusion");
     expect(ck.merkleRoot).toBe("r");
+  });
+});
+
+describe("FsSink.read — crash resilience (torn trailing line)", () => {
+  it("drops a torn trailing line (crash mid-append) and still returns the complete rows", async () => {
+    const path = tmpJsonl();
+    const { anchorer } = setup(new FsSink(path));
+    const batch = anchorer.batch({ maxEvents: 2 });
+    await Promise.all(["a", "b"].map((d) => batch.add({ data: d }).receipt()));
+    const complete = FsSink.read(path).length;
+    expect(complete).toBeGreaterThan(0);
+
+    // Simulate a crash mid-append: a half-written, unparseable trailing line
+    // (appendFileSync is not crash-atomic).
+    appendFileSync(path, '{"type":"event","eventId":"torn","contentHa');
+
+    // read() tolerates it — the torn line is dropped, every complete row survives.
+    expect(FsSink.read(path).length).toBe(complete);
+  });
+
+  it("throws on a malformed line that is NOT the trailing line (real corruption)", () => {
+    const path = tmpJsonl();
+    // A garbage line with another line after it is mid-file corruption, not a
+    // torn append — surface it rather than silently skipping durable rows.
+    writeFileSync(path, "not-json-at-all\n{}\n");
+    expect(() => FsSink.read(path)).toThrow();
   });
 });

@@ -42,6 +42,22 @@ export interface RetainedEvent {
   envelope: EventsEnvelope;
   recordBytes: Uint8Array;
   ref?: string;
+  // Retention truth for the DURABLE trace, mirroring the receipt's flag:
+  //   true      — byte-exact content was persisted to the LogStore
+  //   false     — LogStore put() failed; anchored best-effort
+  //               (onRetentionError:"anchor-anyway-flag"), content NOT retained
+  //   undefined — no LogStore configured (content retention not in use)
+  // Without this on the durable row, a never-stored event is byte-indistinguishable
+  // from a fully-retained one — the silent, audit-time-only failure this seam
+  // exists to kill. `contentStored:false` MUST survive to disk, not just the receipt.
+  //
+  // ORTHOGONAL to `ref`/payload_ref. `ref` is a producer-ASSERTED locator, never
+  // a trust signal — integrity is always content_hash (envelope-spec §2: "a lying
+  // locator is caught by the hash, never trusted on its own"). A caller-supplied
+  // `ref` may name a DIFFERENT location than the SDK's retained copy, so
+  // contentStored:true means "the SDK kept a byte-exact copy" (fetchable via
+  // logStore.get(eventId)), NOT "the payload_ref location was verified".
+  contentStored?: boolean;
   proof:
     | { kind: "direct"; txId: string; gatewayUrl: string }
     | {
@@ -132,6 +148,7 @@ export class FsSink implements Sink {
       eventId: event.eventId,
       contentHash: event.contentHash,
       ...(event.ref !== undefined ? { ref: event.ref } : {}),
+      ...(event.contentStored !== undefined ? { contentStored: event.contentStored } : {}),
       envelope: event.envelope,
       recordBytes: bytesToHex(event.recordBytes),
       proof: event.proof,
@@ -152,6 +169,13 @@ export class FsSink implements Sink {
   // Read every row back, hex-decoding the Uint8Array fields. File order is
   // write order; the caller applies last-writer-wins per eventId/txId (an
   // event row supersedes its intent row). Missing file → no rows.
+  //
+  // Crash resilience: appendFileSync is NOT crash-atomic, so a crash mid-append
+  // can leave a torn (unparseable) TRAILING line. That line is dropped — its
+  // write never completed, so the event is correctly absent (it simply stays
+  // unresolved in the recovery index) and the rest of the durable trace still
+  // reads. A malformed line ANYWHERE EARLIER is real corruption, not a torn
+  // append, and is surfaced (thrown) rather than silently skipped.
   static read(path: string): SinkRecord[] {
     let text: string;
     try {
@@ -161,9 +185,19 @@ export class FsSink implements Sink {
       throw err;
     }
     const out: SinkRecord[] = [];
-    for (const line of text.split("\n")) {
+    const lines = text.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
       if (line.length === 0) continue;
-      const row = JSON.parse(line) as Record<string, unknown>;
+      let row: Record<string, unknown>;
+      try {
+        row = JSON.parse(line) as Record<string, unknown>;
+      } catch (err) {
+        // Torn trailing line (crash mid-append) → drop it and stop. A malformed
+        // line with any non-empty line after it is real corruption → rethrow.
+        if (lines.slice(i + 1).every((l) => l.length === 0)) break;
+        throw err;
+      }
       if (row.type === "intent") {
         out.push({
           type: "intent",
@@ -180,6 +214,9 @@ export class FsSink implements Sink {
             eventId: row.eventId as string,
             contentHash: row.contentHash as string,
             ...(row.ref !== undefined ? { ref: row.ref as string } : {}),
+            ...(row.contentStored !== undefined
+              ? { contentStored: row.contentStored as boolean }
+              : {}),
             envelope: row.envelope as EventsEnvelope,
             recordBytes: hexToBytes(row.recordBytes as string),
             proof: row.proof as RetainedEvent["proof"],

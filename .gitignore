@@ -4,3 +4,7 @@ dist/
 .DS_Store
 coverage/
 anchor-record.json
+
+# example run artifacts (see examples/README.md)
+trace-bundle*.json
+retention-demo/

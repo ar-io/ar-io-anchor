@@ -12,14 +12,22 @@ import { Batcher, type Batch, type BatchOptions, type BatcherContext, type Inclu
 import { buildSignedDataItem, SolanaWalletSigner, txIdFromDataItem } from "./dataitem.js";
 import type { DataItemSigner } from "./dataitem.js";
 import { buildEnvelope } from "./envelope.js";
-import { ProductionConfigError, TxIdMismatchError } from "./errors.js";
+import { ProductionConfigError, RetentionError, TxIdMismatchError } from "./errors.js";
 import {
   toEvidenceBundle,
   type EvidenceBundle,
   type EvidenceIssuer,
 } from "./evidence.js";
+import {
+  DEFAULT_RETENTION_MODE,
+  retentionWarnMessage,
+  runPut,
+  type LogStore,
+  type RetentionErrorMode,
+} from "./logstore.js";
 import { buildEventRecord } from "./record.js";
 import { LocalEd25519Signer } from "./signer.js";
+import { type Sink, writeEventSafely } from "./sink.js";
 import { MemoryStore, type Store } from "./store.js";
 import { buildTags } from "./tags.js";
 import { TurboUploader, type TurboUploaderOptions, type Uploader } from "./turbo.js";
@@ -48,6 +56,20 @@ export interface AnchorerOptions {
   // Plumbing (all optional, test-injectable).
   uploader?: Uploader;
   store?: Store;
+  // Proof retention (T9 Phase 1). Injected below the adapter seam and threaded
+  // through BatcherContext like `store`, so every adapter inherits durable
+  // proofs. Absent → byte-identical to today.
+  sink?: Sink;
+  // Content retention (T9 Phase 2). Same injection path as `sink`: the exact
+  // committed bytes are handed to logStore.put() at add()/anchor(). Absent →
+  // byte-identical to today (raw bytes never leave the process).
+  logStore?: LogStore;
+  // Retention ordering when a logStore is configured. Default "skip-anchor"
+  // (strict, BDFL-ratified): store-before-anchor; a put() failure fails the
+  // event loudly but enumerably and does NOT anchor it. "anchor-anyway-flag"
+  // is best-effort (anchor with contentStored:false on put failure). Ignored
+  // when no logStore is configured.
+  onRetentionError?: RetentionErrorMode;
   turbo?: TurboUploaderOptions;
   // Profile §7 tag options: opaque enumeration scope; Content-Hash tag is a
   // DISCLOSURE and stays off unless explicitly enabled.
@@ -80,6 +102,13 @@ export interface AnchorReceipt {
   recordBytes: Uint8Array;
   environment: Environment;
   gatewayUrl: string;
+  // Content retention (T9 Phase 2). Present ONLY when a logStore is configured:
+  // true when the committed bytes were durably stored, false when best-effort
+  // mode anchored despite a put() failure (onRetentionError:
+  // "anchor-anyway-flag"). Omitted entirely when no logStore is configured, so
+  // receipts are byte-identical to today. Strict-mode put failures never reach
+  // a receipt — they throw RetentionError instead.
+  contentStored?: boolean;
 }
 
 // Override the defaults bundle() applies for you. Everything is optional —
@@ -134,6 +163,13 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
   const wallet = options.wallet ?? new SolanaWalletSigner(LocalEd25519Signer.generate());
   const subject = options.subject ?? { type: "producer" };
   const store = options.store ?? new MemoryStore();
+  // No default sink — absence means retention is off (byte-identical to today).
+  const sink = options.sink;
+  // No default logStore — absence means content retention is off (byte-
+  // identical to today; raw bytes never leave the process). Strict is the
+  // default ordering once a logStore IS configured.
+  const logStore = options.logStore;
+  const retentionMode = options.onRetentionError ?? DEFAULT_RETENTION_MODE;
   const uploader = options.uploader ?? new TurboUploader(options.turbo);
 
   async function anchor(input: AnchorInput): Promise<AnchorReceipt> {
@@ -144,6 +180,54 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
       input.data !== undefined
         ? await hashContent(input.data)
         : { contentHash: requireSha256(input.contentHash!), contentLength: undefined };
+
+    // Content retention (T9 Phase 2), strict order: content-store → anchor →
+    // proof. Only concrete in-memory bytes are retainable — an AsyncIterable
+    // streams through the hasher without buffering (respecting the no-buffer
+    // design), so it carries no stored copy. When no logStore is configured
+    // this whole block is inert and the path below is byte-identical to today.
+    const eventId =
+      input.eventId ?? (logStore !== undefined ? crypto.randomUUID() : undefined);
+    const contentBytes =
+      typeof input.data === "string"
+        ? new TextEncoder().encode(input.data)
+        : input.data instanceof Uint8Array
+          ? input.data
+          : undefined;
+
+    let putRef: string | undefined;
+    let contentStored: boolean | undefined;
+    if (logStore !== undefined && contentBytes !== undefined) {
+      const res = await runPut(logStore, {
+        eventId: eventId!,
+        contentHash,
+        content: contentBytes,
+        ...(input.ref !== undefined ? { ref: input.ref } : {}),
+        ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+      });
+      if (res.ok) {
+        contentStored = true;
+        putRef = res.ref;
+      } else if (retentionMode === "skip-anchor") {
+        // Strict: do NOT anchor an event whose content did not store. Loud.
+        throw new RetentionError(eventId!, res.error);
+      } else {
+        // Best-effort: anchor anyway, flagged enumerable via contentStored:false.
+        contentStored = false;
+        warn(retentionWarnMessage(eventId!, res.error));
+      }
+    }
+
+    // payload_ref / ref binding: caller-supplied ref WINS; the logStore's
+    // content-addressed ref fills only when the caller left it empty. This ref
+    // is a producer-ASSERTED locator, never a trust signal — a verifier fetches
+    // whatever is at it and re-hashes against content_hash (envelope-spec §2:
+    // "a lying locator is caught by the hash, never trusted on its own"), so
+    // signing a caller ref the SDK did not itself store is by-design (external-
+    // commitment). It is orthogonal to `contentStored` (see RetainedEvent):
+    // contentStored reports whether the SDK's logStore kept a byte-exact copy,
+    // which may live at a DIFFERENT location than a caller-supplied payload_ref.
+    const effectiveRef = input.ref ?? putRef;
 
     // Chain head resolves from the store; GENESIS for a chain's first link.
     let chainKey: string | undefined;
@@ -158,7 +242,7 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
       subject,
       contentHash,
       ...(contentLength !== undefined ? { contentLength } : {}),
-      ...(input.ref !== undefined ? { ref: input.ref } : {}),
+      ...(effectiveRef !== undefined ? { ref: effectiveRef } : {}),
       ...(chainKey !== undefined ? { chainKey, previousHash: previousHash! } : {}),
       ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
     });
@@ -167,7 +251,12 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
       record,
       signer,
       environment,
-      ...(input.eventId !== undefined ? { eventId: input.eventId } : {}),
+      ...(eventId !== undefined ? { eventId } : {}),
+      // Bind the content location into the SIGNED envelope. Only when a
+      // logStore is configured, so the no-logStore path stays byte-identical.
+      ...(logStore !== undefined && effectiveRef !== undefined
+        ? { payloadRef: effectiveRef }
+        : {}),
     });
 
     const { txId } = await anchorEnvelopeBytes(
@@ -181,6 +270,21 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
       await store.setHead(chainKey, built.payloadHash);
     }
 
+    const gatewayUrl = `https://turbo-gateway.com/${txId}`;
+
+    // Upload-then-sink: the proof row is only ever written for the accepted tx
+    // (the TxIdMismatch check is upstream, in anchorEnvelopeBytes). A sink
+    // failure warns and degrades to today's in-memory-only receipt.
+    await writeEventSafely(sink, warn, {
+      eventId: built.envelope.event_id,
+      contentHash,
+      envelope: built.envelope,
+      recordBytes: built.recordBytes,
+      ...(effectiveRef !== undefined ? { ref: effectiveRef } : {}),
+      ...(contentStored !== undefined ? { contentStored } : {}),
+      proof: { kind: "direct", txId, gatewayUrl },
+    });
+
     return {
       txId,
       eventId: built.envelope.event_id,
@@ -190,7 +294,8 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
       envelopeBytes: built.envelopeBytes,
       recordBytes: built.recordBytes,
       environment,
-      gatewayUrl: `https://turbo-gateway.com/${txId}`,
+      gatewayUrl,
+      ...(contentStored !== undefined ? { contentStored } : {}),
     };
   }
 
@@ -227,6 +332,9 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
       environment,
       store,
       anchorCheckpointEnvelope: anchorEnvelopeBytes,
+      warn,
+      ...(sink !== undefined ? { sink } : {}),
+      ...(logStore !== undefined ? { logStore, onRetentionError: retentionMode } : {}),
       ...(options.timers !== undefined ? { timers: options.timers } : {}),
     });
     batches.push(b);

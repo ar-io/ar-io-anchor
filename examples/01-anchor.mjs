@@ -24,7 +24,7 @@ try {
 }
 
 console.log("tx:        ", receipt.txId);
-console.log("explorer:  ", receipt.explorerUrl);
+console.log("explorer:  ", `https://viewblock.io/arweave/tx/${receipt.txId}`);
 console.log("contentHash:", receipt.contentHash);
 
 // The on-chain envelope reveals nothing about your event (Minimal

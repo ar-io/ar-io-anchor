@@ -20,6 +20,7 @@ import {
 } from "./evidence.js";
 import { buildEventRecord } from "./record.js";
 import { LocalEd25519Signer } from "./signer.js";
+import { type Sink, writeEventSafely } from "./sink.js";
 import { MemoryStore, type Store } from "./store.js";
 import { buildTags } from "./tags.js";
 import { TurboUploader, type TurboUploaderOptions, type Uploader } from "./turbo.js";
@@ -48,6 +49,10 @@ export interface AnchorerOptions {
   // Plumbing (all optional, test-injectable).
   uploader?: Uploader;
   store?: Store;
+  // Proof retention (T9 Phase 1). Injected below the adapter seam and threaded
+  // through BatcherContext like `store`, so every adapter inherits durable
+  // proofs. Absent → byte-identical to today.
+  sink?: Sink;
   turbo?: TurboUploaderOptions;
   // Profile §7 tag options: opaque enumeration scope; Content-Hash tag is a
   // DISCLOSURE and stays off unless explicitly enabled.
@@ -134,6 +139,8 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
   const wallet = options.wallet ?? new SolanaWalletSigner(LocalEd25519Signer.generate());
   const subject = options.subject ?? { type: "producer" };
   const store = options.store ?? new MemoryStore();
+  // No default sink — absence means retention is off (byte-identical to today).
+  const sink = options.sink;
   const uploader = options.uploader ?? new TurboUploader(options.turbo);
 
   async function anchor(input: AnchorInput): Promise<AnchorReceipt> {
@@ -181,6 +188,20 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
       await store.setHead(chainKey, built.payloadHash);
     }
 
+    const gatewayUrl = `https://turbo-gateway.com/${txId}`;
+
+    // Upload-then-sink: the proof row is only ever written for the accepted tx
+    // (the TxIdMismatch check is upstream, in anchorEnvelopeBytes). A sink
+    // failure warns and degrades to today's in-memory-only receipt.
+    await writeEventSafely(sink, warn, {
+      eventId: built.envelope.event_id,
+      contentHash,
+      envelope: built.envelope,
+      recordBytes: built.recordBytes,
+      ...(input.ref !== undefined ? { ref: input.ref } : {}),
+      proof: { kind: "direct", txId, gatewayUrl },
+    });
+
     return {
       txId,
       eventId: built.envelope.event_id,
@@ -190,7 +211,7 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
       envelopeBytes: built.envelopeBytes,
       recordBytes: built.recordBytes,
       environment,
-      gatewayUrl: `https://turbo-gateway.com/${txId}`,
+      gatewayUrl,
     };
   }
 
@@ -227,6 +248,8 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
       environment,
       store,
       anchorCheckpointEnvelope: anchorEnvelopeBytes,
+      warn,
+      ...(sink !== undefined ? { sink } : {}),
       ...(options.timers !== undefined ? { timers: options.timers } : {}),
     });
     batches.push(b);

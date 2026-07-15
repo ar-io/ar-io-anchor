@@ -460,6 +460,7 @@ export class Batcher implements Batch {
           envelope: leaf.envelope,
           recordBytes: leaf.recordBytes,
           ...(leaf.effectiveRef !== undefined ? { ref: leaf.effectiveRef } : {}),
+          ...(leaf.contentStored !== undefined ? { contentStored: leaf.contentStored } : {}),
           proof: {
             kind: "inclusion",
             leafHash: bytesToHex(leaf.leafHash),

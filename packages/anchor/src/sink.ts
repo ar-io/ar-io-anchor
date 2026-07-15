@@ -42,6 +42,15 @@ export interface RetainedEvent {
   envelope: EventsEnvelope;
   recordBytes: Uint8Array;
   ref?: string;
+  // Retention truth for the DURABLE trace, mirroring the receipt's flag:
+  //   true      — byte-exact content was persisted to the LogStore
+  //   false     — LogStore put() failed; anchored best-effort
+  //               (onRetentionError:"anchor-anyway-flag"), content NOT retained
+  //   undefined — no LogStore configured (content retention not in use)
+  // Without this on the durable row, a never-stored event is byte-indistinguishable
+  // from a fully-retained one — the silent, audit-time-only failure this seam
+  // exists to kill. `contentStored:false` MUST survive to disk, not just the receipt.
+  contentStored?: boolean;
   proof:
     | { kind: "direct"; txId: string; gatewayUrl: string }
     | {
@@ -132,6 +141,7 @@ export class FsSink implements Sink {
       eventId: event.eventId,
       contentHash: event.contentHash,
       ...(event.ref !== undefined ? { ref: event.ref } : {}),
+      ...(event.contentStored !== undefined ? { contentStored: event.contentStored } : {}),
       envelope: event.envelope,
       recordBytes: bytesToHex(event.recordBytes),
       proof: event.proof,
@@ -180,6 +190,9 @@ export class FsSink implements Sink {
             eventId: row.eventId as string,
             contentHash: row.contentHash as string,
             ...(row.ref !== undefined ? { ref: row.ref as string } : {}),
+            ...(row.contentStored !== undefined
+              ? { contentStored: row.contentStored as boolean }
+              : {}),
             envelope: row.envelope as EventsEnvelope,
             recordBytes: hexToBytes(row.recordBytes as string),
             proof: row.proof as RetainedEvent["proof"],

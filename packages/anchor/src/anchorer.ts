@@ -274,6 +274,7 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
       envelope: built.envelope,
       recordBytes: built.recordBytes,
       ...(effectiveRef !== undefined ? { ref: effectiveRef } : {}),
+      ...(contentStored !== undefined ? { contentStored } : {}),
       proof: { kind: "direct", txId, gatewayUrl },
     });
 

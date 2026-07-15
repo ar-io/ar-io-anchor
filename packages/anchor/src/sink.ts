@@ -169,6 +169,13 @@ export class FsSink implements Sink {
   // Read every row back, hex-decoding the Uint8Array fields. File order is
   // write order; the caller applies last-writer-wins per eventId/txId (an
   // event row supersedes its intent row). Missing file → no rows.
+  //
+  // Crash resilience: appendFileSync is NOT crash-atomic, so a crash mid-append
+  // can leave a torn (unparseable) TRAILING line. That line is dropped — its
+  // write never completed, so the event is correctly absent (it simply stays
+  // unresolved in the recovery index) and the rest of the durable trace still
+  // reads. A malformed line ANYWHERE EARLIER is real corruption, not a torn
+  // append, and is surfaced (thrown) rather than silently skipped.
   static read(path: string): SinkRecord[] {
     let text: string;
     try {
@@ -178,9 +185,19 @@ export class FsSink implements Sink {
       throw err;
     }
     const out: SinkRecord[] = [];
-    for (const line of text.split("\n")) {
+    const lines = text.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
       if (line.length === 0) continue;
-      const row = JSON.parse(line) as Record<string, unknown>;
+      let row: Record<string, unknown>;
+      try {
+        row = JSON.parse(line) as Record<string, unknown>;
+      } catch (err) {
+        // Torn trailing line (crash mid-append) → drop it and stop. A malformed
+        // line with any non-empty line after it is real corruption → rethrow.
+        if (lines.slice(i + 1).every((l) => l.length === 0)) break;
+        throw err;
+      }
       if (row.type === "intent") {
         out.push({
           type: "intent",

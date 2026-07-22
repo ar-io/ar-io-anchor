@@ -100,6 +100,15 @@ export interface AnchoredAuditStoreOptions {
   // persistence by event_id is naturally idempotent. The adapter itself
   // does no file I/O.
   onReceipts?: (sessionId: string, receipts: InclusionReceipt[]) => void;
+  // Chain continuity across process restarts: sessionId -> the last ANCHORED
+  // event_id from the previous process (the final receipt's eventId — persist
+  // it via onReceipts, hand it back here on startup). A resumed session's
+  // first record then points at the pre-restart head instead of starting a
+  // fresh chain, so a restart never opens a legitimate-looking gap. Events
+  // added but never receipted before the crash are intentionally NOT resumed
+  // from: the chain continues from the last event an auditor can actually
+  // verify, and the git-vs-anchor diff exposes the crash window honestly.
+  resumeChains?: Record<string, string>;
 }
 
 const DEFAULT_BATCH: BatchOptions = { maxEvents: 64, flushOnIdle: 2_000 };
@@ -118,6 +127,7 @@ export class AnchoredAuditStore implements AuditStore {
   readonly #mapPayload: AnchoredAuditStoreOptions["mapPayload"];
   readonly #warn: (message: string) => void;
   readonly #onReceipts: AnchoredAuditStoreOptions["onReceipts"];
+  readonly #resumeChains: Record<string, string>;
   // sessionId -> lazily created batch + chain state + receipt promises.
   readonly #sessions = new Map<string, SessionState>();
 
@@ -128,6 +138,7 @@ export class AnchoredAuditStore implements AuditStore {
     this.#mapPayload = options.mapPayload;
     this.#warn = options.warn ?? ((m) => console.warn(`[ario-anchor-interchange] ${m}`));
     this.#onReceipts = options.onReceipts;
+    this.#resumeChains = options.resumeChains ?? {};
   }
 
   // ---- the decorated AuditStore surface ----------------------------------
@@ -271,7 +282,7 @@ export class AnchoredAuditStore implements AuditStore {
       const base = this.#batchOptions.name ?? DEFAULT_NAME;
       session = {
         batch: this.#anchorer.batch({ ...this.#batchOptions, name: `${base}:${sessionId}` }),
-        lastEventId: null,
+        lastEventId: this.#resumeChains[sessionId] ?? null,
         receipts: [],
       };
       this.#sessions.set(sessionId, session);

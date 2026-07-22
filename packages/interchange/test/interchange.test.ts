@@ -505,3 +505,31 @@ describe("anchorRecordsFromCollector — hosts that hook the collector", () => {
     expect(meta(adds[2]!).prev_event_id).toBe(adds[0]!.eventId); // same sess-a chain
   });
 });
+
+describe("resumeChains — chain continuity across process restarts", () => {
+  it("the first record of a resumed session chains from the persisted head, not null", async () => {
+    const { anchorer, adds } = spyAnchorer();
+    const { inner } = fakeInner();
+    const store = anchoredAuditStore(inner, anchorer, {
+      resumeChains: { "sess-a": "evt-from-before-restart" },
+    });
+
+    await store.commitAudit([auditRecord()]);
+    expect(meta(adds[0]!).prev_event_id).toBe("evt-from-before-restart");
+
+    // The chain then advances normally within the new process.
+    await store.commitAudit([auditRecord({ callId: "call-2", seq: 1 })]);
+    expect(meta(adds[1]!).prev_event_id).toBe(adds[0]!.eventId);
+  });
+
+  it("sessions absent from resumeChains start a fresh chain", async () => {
+    const { anchorer, adds } = spyAnchorer();
+    const { inner } = fakeInner();
+    const store = anchoredAuditStore(inner, anchorer, {
+      resumeChains: { "some-other-session": "evt-x" },
+    });
+
+    await store.commitAudit([auditRecord()]);
+    expect(meta(adds[0]!).prev_event_id).toBeNull();
+  });
+});

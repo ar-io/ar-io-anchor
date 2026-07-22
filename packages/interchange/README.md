@@ -106,6 +106,7 @@ A single receipt also verifies by hand with `verifyEnvelope(r.envelope, { payloa
 - **Lifecycle is explicit.** `await store.close()` flushes every session and resolves all receipts; `flushSession(sessionId)` checkpoints one session without closing it. There are no hidden process-exit hooks. `onReceipts` fires at both, with the session's cumulative receipts.
 - **Provenance never crashes the agent.** A record that fails to serialize (circular reference, BigInt) — or a throwing `mapPayload` — is reported via `warn` and skipped; the run continues and the chain stays gapless.
 - **Retention is yours.** External commitment means the receipt's `recordBytes` are the only copy of what each hash commits to. Interchange's git repo already retains the records — the receipts (and their envelopes) are what you must keep alongside it.
+- **Restarts don't break the chain.** Long-lived hosts persist each session's last receipt `eventId` (via `onReceipts`) and hand the map back as `resumeChains` on startup — the resumed session's first record then points at the pre-restart head instead of opening a fresh chain.
 - Provenance, not endorsement: a verified history says *what happened* — never "safe" or "approved".
 
 ## Typed against Interchange itself

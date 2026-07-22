@@ -10,6 +10,16 @@ versions **independently** of the `@ar.io/anchor` + `@ar.io/anchor-s3` core (own
 
 ## [0.2.0]
 
+### Added
+
+- **`resumeChains` — session-chain continuity across process restarts.**
+  `anchoredAuditStore(inner, anchorer, { resumeChains: { [sessionId]: lastEventId } })`
+  makes a resumed session's first record chain from the previous process's
+  last anchored event instead of starting a fresh chain — a restart no longer
+  opens a legitimate-looking gap in the deletion-evidence. Pairs with
+  `onReceipts`: persist the final receipt's `eventId` per session, hand it
+  back on startup. Sessions absent from the map behave as before.
+
 ### Changed
 
 - **Typed against Interchange itself** (requested by the Interchange team for

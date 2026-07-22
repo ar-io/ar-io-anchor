@@ -119,10 +119,14 @@ export interface BundleOptions {
   issuer?: EvidenceIssuer;
   // The named delivery surface. Defaults to the receipts' gateway.
   gateway?: string | null;
-  // Opt-in raw-byte disclosure, keyed by eventId — embeds each event's raw
-  // bytes inside the signed body so the bundle is one self-contained, verify-
-  // anywhere file. Default off; see toEvidenceBundle's ToEvidenceBundleOptions.
-  disclose?: Record<string, Uint8Array | string>;
+  // Opt-in raw-byte disclosure — embeds each event's raw bytes inside the
+  // signed body so the bundle is one self-contained, verify-anywhere file.
+  // Default off. Pass a map keyed by eventId to disclose specific bytes, or
+  // `true` to auto-disclose from this anchorer's configured logStore: every
+  // receipt whose bytes the store retained is embedded; hash-only adds (no
+  // stored copy exists anywhere) are skipped. `true` without a retrieving
+  // logStore throws — silent no-disclosure would misrepresent intent.
+  disclose?: true | Record<string, Uint8Array | string>;
 }
 
 export interface Anchorer {
@@ -345,6 +349,27 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
     receipts: InclusionReceipt[],
     bundleOptions: BundleOptions = {},
   ): Promise<EvidenceBundle> {
+    // disclose: true — resolve the map from the configured logStore (the
+    // export path content retention exists for). Only retained bytes are
+    // embedded: a hash-only add has no stored copy anywhere, so it stays
+    // hash-only in the bundle too. toEvidenceBundle still asserts every
+    // resolved byte-string against its committed content_hash before signing.
+    let disclose = bundleOptions.disclose;
+    if (disclose === true) {
+      if (logStore?.get === undefined) {
+        throw new Error(
+          "anchor: bundle({ disclose: true }) needs a logStore with get() — " +
+            "configure createAnchorer({ logStore }) or pass an explicit disclose map",
+        );
+      }
+      const resolved: Record<string, Uint8Array> = {};
+      for (const r of receipts) {
+        const bytes = await logStore.get(r.eventId);
+        if (bytes !== null) resolved[r.eventId] = bytes;
+      }
+      disclose = resolved;
+    }
+
     // Sign the wrapper with the anchorer's OWN signer (caller-supplied or
     // auto-generated in dev mode) — the same key the receipts' envelopes are
     // signed with. Default issuer derives from the anchorer's subject (a bare
@@ -354,7 +379,7 @@ export function createAnchorer(options: AnchorerOptions = {}): Anchorer {
       signer,
       issuer: bundleOptions.issuer ?? defaultIssuer(subject),
       ...(bundleOptions.gateway !== undefined ? { gateway: bundleOptions.gateway } : {}),
-      ...(bundleOptions.disclose !== undefined ? { disclose: bundleOptions.disclose } : {}),
+      ...(disclose !== undefined ? { disclose } : {}),
     });
   }
 

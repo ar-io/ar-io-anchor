@@ -16,6 +16,7 @@ import { LocalEd25519Signer } from "../src/signer";
 import { toEvidenceBundle } from "../src/evidence";
 import type { EvidenceBundle } from "../src/evidence";
 import type { InclusionReceipt } from "../src/batch";
+import type { LogStore, StoredContent } from "../src/logstore";
 import type { UploadReceipt, Uploader } from "../src/turbo";
 
 class StubUploader implements Uploader {
@@ -440,3 +441,59 @@ async function reSign(bundle: EvidenceBundle, signer: LocalEd25519Signer): Promi
   bundle.public_key = bytesToHex(await signer.publicKey());
   bundle.signature = bytesToHex(await signer.sign(utf8(jcs(pre))));
 }
+
+describe("ario.bundle({ disclose: true }) — auto-disclosure from the anchorer's logStore", () => {
+  class MemoryLogStore implements LogStore {
+    readonly bytes = new Map<string, Uint8Array>();
+    async put(content: StoredContent): Promise<void> {
+      this.bytes.set(content.eventId, content.content);
+    }
+    async get(eventId: string): Promise<Uint8Array | null> {
+      return this.bytes.get(eventId) ?? null;
+    }
+  }
+
+  it("discloses every retained event's bytes in-body, straight from the logStore", async () => {
+    const logStore = new MemoryLogStore();
+    const ario = createAnchorer({ uploader: new StubUploader(), warn: () => {}, logStore });
+    const batch = ario.batch({ maxEvents: 2 });
+    const receipts = await Promise.all([
+      batch.add({ data: "alpha" }).receipt(),
+      batch.add({ data: "beta" }).receipt(),
+    ]);
+
+    const bundle = await ario.bundle(receipts, { disclose: true });
+
+    expect(bundle.body.events.map((e) => e.content)).toEqual([
+      bytesToHex(utf8("alpha")),
+      bytesToHex(utf8("beta")),
+    ]);
+    // Same wire shape as the hand-built map — and still verifies green.
+    const v = await verifyBundleWithKernel(bundle);
+    expect(v.signatureOk).toBe(true);
+    expect(v.eventsOk).toBe(true);
+  });
+
+  it("skips events the logStore holds no bytes for (hash-only adds) instead of throwing", async () => {
+    const logStore = new MemoryLogStore();
+    const ario = createAnchorer({ uploader: new StubUploader(), warn: () => {}, logStore });
+    const batch = ario.batch({ maxEvents: 2 });
+    const receipts = await Promise.all([
+      batch.add({ data: "seen" }).receipt(),
+      batch.add({ contentHash: await sha256Hex(utf8("never-seen")) }).receipt(),
+    ]);
+
+    const bundle = await ario.bundle(receipts, { disclose: true });
+
+    expect(bundle.body.events[0]!.content).toBe(bytesToHex(utf8("seen")));
+    expect(bundle.body.events[1]!.content).toBeUndefined();
+  });
+
+  it("throws prescriptively when no logStore is configured", async () => {
+    const ario = createAnchorer({ uploader: new StubUploader(), warn: () => {} });
+    const batch = ario.batch({ maxEvents: 1 });
+    const receipts = [await batch.add({ data: "one" }).receipt()];
+
+    await expect(ario.bundle(receipts, { disclose: true })).rejects.toThrow(/logStore/);
+  });
+});

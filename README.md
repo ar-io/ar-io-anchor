@@ -92,7 +92,7 @@ Runnable, in [`examples/`](examples/): anchor + offline verify, batch + inclusio
 | [`packages/s3`](packages/s3) (`@ar.io/anchor-s3`) | The S3 wrapper adapter. Dependencies point adapter → core, never back. |
 | [`packages/langchain`](packages/langchain) (`@ar.io/anchor-langchain`) | LangChain.js callback handler: the agent's run tree as a Merkle-batched, deletion-evident event chain. |
 | [`packages/vercel`](packages/vercel) (`@ar.io/anchor-vercel`) | Vercel AI SDK middleware: every generation anchored on the batcher hot path. |
-| [`packages/interchange`](packages/interchange) (`@ar.io/anchor-interchange`) | [Interchange](https://github.com/faremeter/interchange) AuditStore decorator: per-session anchored audit chains, signed with the agent's own identity key (structural typing — no `@intx` dependency). |
+| [`packages/interchange`](packages/interchange) (`@ar.io/anchor-interchange`) | [Interchange](https://github.com/faremeter/interchange) AuditStore decorator: per-session anchored audit chains, signed with the agent's own identity key (typed against `@intx/types` ≥ 0.2 as a type-only peer — runtime deps stay `@ar.io/anchor` only). |
 
 ## Conformance & proof
 

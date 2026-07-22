@@ -8,6 +8,34 @@ versions **independently** of the `@ar.io/anchor` + `@ar.io/anchor-s3` core (own
 
 ## [Unreleased]
 
+## [0.2.0]
+
+### Changed
+
+- **Typed against Interchange itself** (requested by the Interchange team for
+  their v0.2 release): the adapter now imports `AuditRecord`, `ErrorRecord`,
+  `AuditStore`, and `CryptoProvider` directly from `@intx/types` (>= 0.2.2, new
+  **peerDependency**) instead of defining duck-typed structural mirrors.
+  Interchange 0.2 ships compiled JS + declarations on npm, which removed the
+  reason the mirrors existed (0.1.x published raw TypeScript source npm
+  consumers couldn't load). Imports are type-only: nothing from `@intx` loads
+  at runtime and the runtime dependency tree is still exactly `@ar.io/anchor`.
+- `signerFromCryptoProvider` now takes
+  `Pick<CryptoProvider, "sign" | "getPublicKey">` — Interchange's own type,
+  narrowed to the raw-sign surface the adapter actually uses.
+- The compatibility gate (`test/intx-compat.test.ts`) shrank to its runtime
+  half: fixtures still validate against Interchange's arktype schemas; the
+  compile-time boundary check is now the adapter's own import sites.
+
+### Removed
+
+- **Breaking:** the exported mirror types `InterchangeAuditRecord`,
+  `InterchangeErrorRecord`, `InterchangeAuditStore`, `InterchangeAuditAuthz`,
+  and `InterchangeCryptoProvider` — use the corresponding types from
+  `@intx/types/audit` and `@intx/types/runtime`. `AnchoredAuditStore` and
+  `anchoredAuditStore` are no longer generic over the record types (upstream's
+  `AuditStore` isn't; the generics no longer bought anything).
+
 ## [0.1.0]
 
 ### Added

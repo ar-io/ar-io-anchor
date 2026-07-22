@@ -108,12 +108,14 @@ A single receipt also verifies by hand with `verifyEnvelope(r.envelope, { payloa
 - **Retention is yours.** External commitment means the receipt's `recordBytes` are the only copy of what each hash commits to. Interchange's git repo already retains the records — the receipts (and their envelopes) are what you must keep alongside it.
 - Provenance, not endorsement: a verified history says *what happened* — never "safe" or "approved".
 
-## Why no dependency on Interchange
+## Typed against Interchange itself
 
-The adapter defines minimal **structural** (duck-typed) interfaces — `InterchangeAuditRecord`, `InterchangeErrorRecord`, `InterchangeAuditStore`, `InterchangeCryptoProvider` — that mirror the shapes in `@intx/types` and `@intx/crypto`, rather than importing them. Some `@intx/*` packages are on npm and some are not (`@intx/crypto` isn't, as of this writing), all are pre-1.0, and `@intx/types` carries a runtime validation dependency this adapter doesn't need. Structural typing sidesteps all of that: any object with the right shape works, from any Interchange version, with zero version coupling — and this package's dependency tree stays exactly [`@ar.io/anchor`](https://github.com/ar-io/ar-io-anchor/tree/main/packages/anchor).
+The adapter is typed directly against [`@intx/types`](https://www.npmjs.com/package/@intx/types) (a **peerDependency**, `^0.2.2`): `commitAudit` takes Interchange's own `AuditRecord[]`, the decorated store *is* an `@intx/types/runtime` `AuditStore`, and `signerFromCryptoProvider` adapts their `CryptoProvider`. There is no adapter-local mirror of Interchange's shapes to drift out of date — the compiler checks your composition against the same types Interchange itself uses, at whatever `@intx/types` version your project has installed.
 
-Drift is guarded, not assumed away: `@intx/types` is a **devDependency** feeding a compatibility gate (`test/intx-compat.test.ts`) that typechecks every real API boundary against Interchange's own types — their store decorates, their records anchor, their `CryptoProvider` adapts, and the decorated store hands back to Interchange as an `AuditStore` — and validates our test fixtures against their runtime schemas. If an `@intx/types` bump changes a shape, CI fails here instead of in a consumer. The decorator is generic over the record types, so decorating a store typed with Interchange's narrower records preserves those types end-to-end.
+The imports are type-only, so nothing from `@intx` loads at runtime: this package's runtime dependency tree stays exactly [`@ar.io/anchor`](https://github.com/ar-io/ar-io-anchor/tree/main/packages/anchor). One runtime gate remains (`test/intx-compat.test.ts`): the canonical fixtures our tests anchor are validated against Interchange's own arktype schemas, so an upstream tightening the static types can't express fails in this repo's CI instead of in a consumer's audit trail.
+
+Earlier versions (≤ 0.1.0) shipped duck-typed structural mirrors instead, because `@intx/*` 0.1.x published raw TypeScript source npm consumers couldn't load. Interchange 0.2 ships compiled JS + declarations, which removed the reason for the indirection.
 
 ## License
 
-MIT. This package depends only on [`@ar.io/anchor`](https://github.com/ar-io/ar-io-anchor/tree/main/packages/anchor).
+MIT. This package depends only on [`@ar.io/anchor`](https://github.com/ar-io/ar-io-anchor/tree/main/packages/anchor) at runtime; `@intx/types` is a type-only peer dependency.

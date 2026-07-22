@@ -17,18 +17,16 @@ import {
 } from "@ar.io/proof";
 import { describe, expect, it } from "vitest";
 
-import {
-  anchoredAuditStore,
-  signerFromCryptoProvider,
-  type InterchangeAuditRecord,
-  type InterchangeAuditStore,
-  type InterchangeCryptoProvider,
-} from "../src/index";
+import type { AuditRecord } from "@intx/types/audit";
+import type { AuditStore, CryptoProvider } from "@intx/types/runtime";
 
-// An Interchange-shaped CryptoProvider: raw 64-byte Ed25519 sign, raw
-// 32-byte public key, synchronous getPublicKey() — the exact surface of
-// @intx/crypto's Ed25519Crypto, backed here by the SDK's local signer.
-async function fakeCryptoProvider(): Promise<InterchangeCryptoProvider> {
+import { anchoredAuditStore, signerFromCryptoProvider } from "../src/index";
+
+// The raw-sign half of Interchange's CryptoProvider: raw 64-byte Ed25519
+// sign, raw 32-byte public key, synchronous getPublicKey() — the exact
+// surface signerFromCryptoProvider needs, backed here by the SDK's local
+// signer.
+async function fakeCryptoProvider(): Promise<Pick<CryptoProvider, "sign" | "getPublicKey">> {
   const key = LocalEd25519Signer.fromSeedHex("ab".repeat(32));
   const publicKey = await key.publicKey();
   return {
@@ -47,7 +45,7 @@ function stubUploader() {
   };
 }
 
-function noopInner(): InterchangeAuditStore {
+function noopInner(): AuditStore {
   return {
     commitAudit: async () => {},
     loadAudit: async () => [],
@@ -55,7 +53,7 @@ function noopInner(): InterchangeAuditStore {
   };
 }
 
-function auditRecord(over: Partial<InterchangeAuditRecord>): InterchangeAuditRecord {
+function auditRecord(over: Partial<AuditRecord>): AuditRecord {
   return {
     callId: "call-1",
     tool: "fs_read",

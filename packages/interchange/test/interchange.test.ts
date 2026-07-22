@@ -8,20 +8,15 @@
 // batch lifecycle.
 
 import type { Anchorer, BatchEventInput, BatchOptions, InclusionReceipt } from "@ar.io/anchor";
+import type { AuditRecord, ErrorRecord } from "@intx/types/audit";
+import type { AuditStore } from "@intx/types/runtime";
 import { describe, expect, it } from "vitest";
 
-import {
-  anchoredAuditStore,
-  anchorRecordsFromCollector,
-  EVENT_TYPES,
-  type InterchangeAuditRecord,
-  type InterchangeAuditStore,
-  type InterchangeErrorRecord,
-} from "../src/index";
+import { anchoredAuditStore, anchorRecordsFromCollector, EVENT_TYPES } from "../src/index";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-function auditRecord(over: Partial<InterchangeAuditRecord> = {}): InterchangeAuditRecord {
+function auditRecord(over: Partial<AuditRecord> = {}): AuditRecord {
   return {
     callId: "call-1",
     tool: "fs_read",
@@ -35,7 +30,7 @@ function auditRecord(over: Partial<InterchangeAuditRecord> = {}): InterchangeAud
   };
 }
 
-function blockedRecord(over: Partial<InterchangeAuditRecord> = {}): InterchangeAuditRecord {
+function blockedRecord(over: Partial<AuditRecord> = {}): AuditRecord {
   return auditRecord({
     callId: "call-blocked",
     tool: "shell_exec",
@@ -51,7 +46,7 @@ function blockedRecord(over: Partial<InterchangeAuditRecord> = {}): InterchangeA
   });
 }
 
-function errorRecord(over: Partial<InterchangeErrorRecord> = {}): InterchangeErrorRecord {
+function errorRecord(over: Partial<ErrorRecord> = {}): ErrorRecord {
   return {
     source: "inference",
     category: "rate_limit",
@@ -67,7 +62,7 @@ function errorRecord(over: Partial<InterchangeErrorRecord> = {}): InterchangeErr
 function fakeInner() {
   const calls: { method: string; count: number }[] = [];
   const loaded = [auditRecord()];
-  const inner: InterchangeAuditStore = {
+  const inner: AuditStore = {
     commitAudit: async (records) => {
       calls.push({ method: "commitAudit", count: records.length });
     },
@@ -209,7 +204,7 @@ describe("delegation — the inner store stays the system of record", () => {
   it("delegates to inner.commitAudit before anchoring anything", async () => {
     const order: string[] = [];
     const { anchorer, adds } = spyAnchorer();
-    const inner: InterchangeAuditStore = {
+    const inner: AuditStore = {
       commitAudit: async () => {
         order.push(`inner(adds so far: ${adds.length})`);
       },
@@ -227,7 +222,7 @@ describe("delegation — the inner store stays the system of record", () => {
 
   it("anchors nothing when the inner store throws", async () => {
     const { anchorer, adds } = spyAnchorer();
-    const inner: InterchangeAuditStore = {
+    const inner: AuditStore = {
       commitAudit: async () => {
         throw new Error("git is locked");
       },
@@ -247,7 +242,7 @@ describe("delegation — the inner store stays the system of record", () => {
     const signals: (AbortSignal | undefined)[] = [];
     const { anchorer } = spyAnchorer();
     const { inner, calls, loaded } = fakeInner();
-    const spyInner: InterchangeAuditStore = {
+    const spyInner: AuditStore = {
       ...inner,
       commitAudit: async (records, signal) => {
         signals.push(signal);

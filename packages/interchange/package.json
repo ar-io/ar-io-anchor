@@ -1,6 +1,6 @@
 {
   "name": "@ar.io/anchor-interchange",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Anchor Interchange's signed git-backed audit trail on ar.io: a decorator over the AuditStore turns every tool call, blocked call, and error into a Merkle-batched, individually inclusion-proofed provenance record — signed with the agent's existing Ed25519 identity key, hashed locally and never uploaded.",
   "license": "MIT",
   "type": "module",
@@ -24,9 +24,12 @@
   "dependencies": {
     "@ar.io/anchor": "^0.2.0"
   },
+  "peerDependencies": {
+    "@intx/types": "^0.2.2"
+  },
   "devDependencies": {
     "@ar.io/proof": "^0.2.0",
-    "@intx/types": "^0.1.2"
+    "@intx/types": "^0.2.2"
   },
   "repository": {
     "type": "git",

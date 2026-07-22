@@ -73,6 +73,14 @@ const bundle = await ario.bundle(receipts, {
 
 Each disclosed event embeds its bytes (lowercase hex) **inside the signed body**, so the disclosure is covered by `body_hash` and tamper-evident like everything else; `sha256(bytes)` is asserted equal to the event's committed `content_hash` at assembly time, and a mismatch throws. This is purely a property of the **file you hand out** — your **on-chain footprint is unchanged** (the envelope still carries only the hash), and events you don't list stay minimal. Disclose all, some, or none, per event.
 
+With a `logStore` configured (see retention below), skip the map entirely — `disclose: true` reads every retained event's bytes back from the store for you:
+
+```ts
+const bundle = await ario.bundle(receipts, { disclose: true }); // from the logStore
+```
+
+Hash-only adds (the SDK never saw those bytes) stay minimal; `true` without a retrieving `logStore` throws rather than silently disclosing nothing.
+
 ## Verifying
 
 Hand the trace bundle to an auditor; they verify the whole thing — every event's signature + payload binding + Merkle inclusion, offline — with **one command** and the read-only [`@ar.io/proof`](https://www.npmjs.com/package/@ar.io/proof) (no write SDK in the trust path):

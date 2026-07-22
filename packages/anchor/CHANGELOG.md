@@ -7,6 +7,16 @@ file are recorded in the git history and GitHub releases (`anchor-v*` tags).
 
 ## [Unreleased]
 
+### Added
+
+- **`bundle(receipts, { disclose: true })` — auto-disclosure from the logStore.**
+  With content retention configured (`createAnchorer({ logStore })`), `true`
+  resolves the disclosure map for you: every receipt whose bytes the store
+  retained is embedded in-body (asserted against its committed `content_hash`
+  at assembly, as always). Hash-only adds stay minimal; `true` without a
+  retrieving logStore throws instead of silently disclosing nothing. The
+  explicit per-event map form is unchanged.
+
 ## [0.2.0] — 2026-06-30
 
 ### Added
